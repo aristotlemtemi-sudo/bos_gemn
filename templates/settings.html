@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+{% block title %}Settings - BOS GEMN{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}Configure your BOS GEMN preferences{% endblock %}
+
+{% block content %}
+<div class="section active" id="settings">
+
+    <!-- ==================== PROFILE SETTINGS ==================== -->
+    <div class="content-grid full">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-user"></i> Profile Settings</div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" class="form-input" id="settingName" placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="settingEmail" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Currency</label>
+                    <select class="form-select" id="settingCurrency">
+                        <option value="TZS">TZS - Tanzanian Shilling</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="GBP">GBP - British Pound</option>
+                        <option value="KES">KES - Kenyan Shilling</option>
+                        <option value="UGX">UGX - Ugandan Shilling</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Timezone</label>
+                    <select class="form-select" id="settingTimezone">
+                        <option value="UTC+3">UTC+3 (EAT - East Africa)</option>
+                        <option value="UTC+0">UTC+0 (GMT)</option>
+                        <option value="UTC+1">UTC+1 (CET)</option>
+                        <option value="UTC-5">UTC-5 (EST)</option>
+                        <option value="UTC-8">UTC-8 (PST)</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Bio</label>
+                    <textarea class="form-textarea" id="settingBio" placeholder="Tell us about your betting strategy..."></textarea>
+                </div>
+            </div>
+            <div style="margin-top:20px">
+                <button class="btn btn-primary" onclick="saveProfile()"><i class="fas fa-save"></i> Save Profile</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== APPEARANCE ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-palette"></i> Appearance</div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Theme</label>
+                    <select class="form-select" id="settingTheme" onchange="previewTheme(this.value)">
+                        <option value="dark">Dark (Default)</option>
+                        <option value="light">Light</option>
+                        <option value="auto">Auto (System)</option>
+                    </select>
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Changes apply immediately across all pages</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Accent Color</label>
+                    <select class="form-select" id="settingAccent">
+                        <option value="blue">Blue (Default)</option>
+                        <option value="green">Green</option>
+                        <option value="purple">Purple</option>
+                        <option value="orange">Orange</option>
+                        <option value="pink">Pink</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Items Per Page</label>
+                    <select class="form-select" id="settingItemsPerPage">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== BANKROLL ALERTS (RED/YELLOW MARGINS) ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-shield-alt"></i> Bankroll Alert Margins</div>
+            </div>
+            <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">
+                Set percentage thresholds for bankroll alerts. When your available bankroll drops below these margins of your total deposits, you'll get notified.
+            </p>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color:var(--accent-red);font-weight:700;">🔴 RED Margin (%)</span>
+                        <span style="color:var(--text-muted);font-size:11px;display:block;margin-top:2px;">CRITICAL alert threshold</span>
+                    </label>
+                    <input type="number" class="form-input" id="settingRedMargin" min="1" max="50" step="0.5" placeholder="5.0">
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">
+                        Example: 5% means if you deposited TZS 1,000,000 and your balance drops to TZS 950,000, you get a CRITICAL alert.
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color:var(--accent-orange);font-weight:700;">🟡 YELLOW Margin (%)</span>
+                        <span style="color:var(--text-muted);font-size:11px;display:block;margin-top:2px;">WARNING alert threshold</span>
+                    </label>
+                    <input type="number" class="form-input" id="settingYellowMargin" min="1" max="50" step="0.5" placeholder="10.0">
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">
+                        Example: 10% means if you deposited TZS 1,000,000 and your balance drops to TZS 900,000, you get a WARNING alert.
+                    </small>
+                </div>
+            </div>
+            <div style="margin-top:16px;padding:16px;background:rgba(59,130,246,0.05);border-radius:8px;border:1px solid rgba(59,130,246,0.2);">
+                <div style="font-size:13px;color:var(--text-secondary);">
+                    <i class="fas fa-info-circle" style="color:var(--accent-blue);margin-right:6px;"></i>
+                    <strong>How it works:</strong> The system monitors your total balance vs total deposits across all bookmakers. 
+                    If balance &lt; deposits × (1 - margin%), you get an alert. 
+                    <span style="color:var(--accent-red);">RED</span> = critical, <span style="color:var(--accent-orange);">YELLOW</span> = warning.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== NOTIFICATIONS ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-bell"></i> Notifications</div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Bet Result Alerts</label>
+                    <select class="form-select" id="settingBetAlerts">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Get notified when a slip is settled (won/lost)</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Daily Summary</label>
+                    <select class="form-select" id="settingDailySummary">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Daily overview of your betting activity</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Bankroll Alerts</label>
+                    <select class="form-select" id="settingBankrollAlerts">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Alerts when bankroll drops below red/yellow margins</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Push Notifications</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <select class="form-select" id="settingPushNotifications" style="flex:1;">
+                            <option value="false">Disabled</option>
+                            <option value="true">Enabled</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" onclick="requestPushPermission()" id="pushBtn" style="white-space:nowrap;">
+                            <i class="fas fa-mobile-alt"></i> Enable on Device
+                        </button>
+                    </div>
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">
+                        Send notifications to your phone/desktop even when browser is closed. Click "Enable on Device" to set up.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PDF SETTINGS ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-file-pdf"></i> PDF Report Settings</div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Report Currency</label>
+                    <select class="form-select" id="settingPdfCurrency">
+                        <option value="TZS">TZS</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Company Name (on PDF)</label>
+                    <input type="text" class="form-input" id="settingPdfCompany" placeholder="BOS GEMN">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SAVE ALL BUTTON ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="saveAllSettings()" style="font-size:16px;padding:14px 32px;">
+                <i class="fas fa-save"></i> Save All Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== DATA MANAGEMENT ==================== -->
+    <div class="content-grid full" style="margin-top:20px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-database"></i> Data Management</div>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+                <button class="btn btn-primary" onclick="seedData()">
+                    <i class="fas fa-seedling"></i> Load Sample Data
+                </button>
+                <button class="btn btn-warning" onclick="exportAllData()">
+                    <i class="fas fa-download"></i> Export All Data
+                </button>
+                <button class="btn btn-danger" onclick="clearAllData()">
+                    <i class="fas fa-trash"></i> Clear All Data
+                </button>
+            </div>
+            <p style="margin-top:12px;color:var(--text-muted);font-size:13px">
+                Use sample data to explore app features. Export creates a JSON backup of all your slips and settings.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== LOAD SETTINGS ====================
+async function loadSettings() {
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+        
+        document.getElementById('settingName').value = settings.display_name || '';
+        document.getElementById('settingEmail').value = settings.email || '';
+        document.getElementById('settingCurrency').value = settings.currency || 'TZS';
+        document.getElementById('settingTimezone').value = settings.timezone || 'UTC+3';
+        document.getElementById('settingBio').value = settings.bio || '';
+        
+        document.getElementById('settingTheme').value = settings.theme || 'dark';
+        document.getElementById('settingAccent').value = settings.accent_color || 'blue';
+        document.getElementById('settingItemsPerPage').value = settings.items_per_page || 25;
+        
+        document.getElementById('settingRedMargin').value = settings.bankroll_red_margin || 5.0;
+        document.getElementById('settingYellowMargin').value = settings.bankroll_yellow_margin || 10.0;
+        
+        document.getElementById('settingBetAlerts').value = String(settings.bet_result_alerts !== false);
+        document.getElementById('settingDailySummary').value = String(settings.daily_summary !== false);
+        document.getElementById('settingBankrollAlerts').value = String(settings.bankroll_alerts !== false);
+        document.getElementById('settingPushNotifications').value = String(settings.push_notifications === true);
+        
+        document.getElementById('settingPdfCurrency').value = settings.pdf_currency || 'TZS';
+        document.getElementById('settingPdfCompany').value = settings.pdf_company_name || 'BOS GEMN';
+        
+        // Apply loaded theme immediately
+        if (settings.theme) {
+            applyTheme(settings.theme);
+        }
+        
+    } catch (err) {
+        console.error('Settings load error:', err);
+        showToast('Failed to load settings', 'error');
+    }
+}
+
+// ==================== PREVIEW THEME ====================
+function previewTheme(theme) {
+    applyTheme(theme);
+    showToast('Theme preview applied. Save to keep.', 'info');
+}
+
+// ==================== SAVE ALL SETTINGS ====================
+async function saveAllSettings() {
+    const data = {
+        display_name: document.getElementById('settingName').value.trim(),
+        email: document.getElementById('settingEmail').value.trim(),
+        currency: document.getElementById('settingCurrency').value,
+        timezone: document.getElementById('settingTimezone').value,
+        bio: document.getElementById('settingBio').value.trim(),
+        
+        theme: document.getElementById('settingTheme').value,
+        accent_color: document.getElementById('settingAccent').value,
+        items_per_page: parseInt(document.getElementById('settingItemsPerPage').value),
+        
+        bankroll_red_margin: parseFloat(document.getElementById('settingRedMargin').value) || 5.0,
+        bankroll_yellow_margin: parseFloat(document.getElementById('settingYellowMargin').value) || 10.0,
+        
+        bet_result_alerts: document.getElementById('settingBetAlerts').value === 'true',
+        daily_summary: document.getElementById('settingDailySummary').value === 'true',
+        bankroll_alerts: document.getElementById('settingBankrollAlerts').value === 'true',
+        push_notifications: document.getElementById('settingPushNotifications').value === 'true',
+        
+        pdf_currency: document.getElementById('settingPdfCurrency').value,
+        pdf_company_name: document.getElementById('settingPdfCompany').value.trim()
+    };
+    
+    // Validate margins
+    if (data.bankroll_red_margin >= data.bankroll_yellow_margin) {
+        showToast('RED margin must be LESS than YELLOW margin', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (res.ok) {
+            showToast('All settings saved successfully!', 'success');
+            // Update user display in sidebar
+            loadUserSettings();
+            // Persist theme
+            localStorage.setItem('bos_theme', data.theme);
+        } else {
+            const errData = await res.json();
+            showToast(errData.error || 'Failed to save settings', 'error');
+        }
+    } catch (err) {
+        showToast('Network error while saving', 'error');
+    }
+}
+
+// ==================== SAVE PROFILE (shortcut) ====================
+async function saveProfile() {
+    await saveAllSettings();
+}
+
+// ==================== PUSH NOTIFICATIONS ====================
+async function requestPushPermission() {
+    if (!('Notification' in window)) {
+        showToast('Push notifications not supported by this browser', 'warning');
+        return;
+    }
+    
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+        try {
+            const reg = await navigator.serviceWorker.register('/static/js/sw.js');
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array('{{ vapid_public_key }}')
+            });
+            
+            await fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: sub.endpoint,
+                    p256dh: arrayBufferToBase64(sub.getKey('p256dh')),
+                    auth: arrayBufferToBase64(sub.getKey('auth'))
+                })
+            });
+            
+            document.getElementById('settingPushNotifications').value = 'true';
+            showToast('Push notifications enabled on this device!', 'success');
+            
+        } catch (e) {
+            showToast('Failed to enable push notifications', 'error');
+        }
+    } else {
+        showToast('Permission denied for notifications', 'warning');
+    }
+}
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+}
+
+function arrayBufferToBase64(buffer) {
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
+// ==================== DATA MANAGEMENT ====================
+async function seedData() {
+    if (!confirm('This will load sample betting data. Continue?')) return;
+    try {
+        const res = await fetch('/api/seed', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
+    } catch (err) {
+        showToast('Failed to load sample data', 'error');
+    }
+}
+
+function exportAllData() {
+    showToast('Preparing export...', 'info');
+    
+    fetch('/api/slips').then(r => r.json()).then(slips => {
+        fetch('/api/bookmakers').then(r => r.json()).then(bms => {
+            fetch('/api/settings').then(r => r.json()).then(settings => {
+                const data = {
+                    exported_at: new Date().toISOString(),
+                    version: 'BOS_GEMN_1.0',
+                    settings: settings,
+                    bookmakers: bms,
+                    slips: slips
+                };
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `BOS_GEMN_Backup_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('All data exported to JSON!', 'success');
+            });
+        });
+    });
+}
+
+function clearAllData() {
+    if (!confirm('WARNING: This will delete ALL your data. This cannot be undone. Are you sure?')) return;
+    if (!confirm('Really sure? All bets, bookmakers, and settings will be permanently lost.')) return;
+    
+    showToast('Clearing all data...', 'info');
+    
+    // Delete all slips
+    fetch('/api/slips').then(r => r.json()).then(slips => {
+        const promises = slips.map(s => fetch(`/api/slips/${s.id}`, { method: 'DELETE' }));
+        Promise.all(promises).then(() => {
+            showToast('All data cleared. Refreshing...', 'success');
+            setTimeout(() => location.reload(), 1500);
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', loadSettings);
+</script>
+{% endblock %}

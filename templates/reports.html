@@ -1,0 +1,515 @@
+{% extends "base.html" %}
+{% block title %}Reports - BOS GEMN{% endblock %}
+{% block page_title %}Reports{% endblock %}
+{% block page_subtitle %}Generate and export comprehensive performance reports{% endblock %}
+
+{% block content %}
+<div class="section active" id="reports">
+
+    <!-- ==================== REPORT TYPE CARDS ==================== -->
+    <div class="report-grid">
+        <div class="report-card" onclick="generateReport('today')">
+            <i class="fas fa-sun"></i>
+            <h4>Today</h4>
+            <p>Daily summary & breakdown</p>
+        </div>
+        <div class="report-card" onclick="generateReport('week')">
+            <i class="fas fa-calendar-week"></i>
+            <h4>This Week</h4>
+            <p>Weekly performance review</p>
+        </div>
+        <div class="report-card" onclick="generateReport('month')">
+            <i class="fas fa-calendar-alt"></i>
+            <h4>This Month</h4>
+            <p>Monthly analytics & trends</p>
+        </div>
+        <div class="report-card" onclick="generateReport('year')">
+            <i class="fas fa-calendar-check"></i>
+            <h4>This Year</h4>
+            <p>Annual overview & insights</p>
+        </div>
+        <div class="report-card" onclick="generateReport('all')">
+            <i class="fas fa-database"></i>
+            <h4>All Time</h4>
+            <p>Complete history</p>
+        </div>
+        <div class="report-card" onclick="showCustomRange()">
+            <i class="fas fa-sliders-h"></i>
+            <h4>Custom Range</h4>
+            <p>Pick your own dates</p>
+        </div>
+    </div>
+
+    <!-- ==================== EXPORT ACTIONS ==================== -->
+    <div class="glass-card" style="margin-top:24px">
+        <div class="card-header">
+            <div class="card-title"><i class="fas fa-download"></i> Export Reports</div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;padding:0 20px 20px;">
+            <button class="btn btn-primary" onclick="exportPDF()">
+                <i class="fas fa-file-pdf"></i> Download PDF Report
+            </button>
+            <button class="btn" onclick="window.print()">
+                <i class="fas fa-print"></i> Print Page
+            </button>
+            <button class="btn" onclick="exportJSON()">
+                <i class="fas fa-file-code"></i> Export JSON Data
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== SUMMARY STATS ==================== -->
+    <div class="stats-grid" style="margin-top:24px">
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Slips</span>
+                <div class="stat-icon blue"><i class="fas fa-receipt"></i></div>
+            </div>
+            <div class="stat-value" id="reportTotalSlips">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Won</span>
+                <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+            </div>
+            <div class="stat-value text-green" id="reportWon">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Lost</span>
+                <div class="stat-icon red"><i class="fas fa-times-circle"></i></div>
+            </div>
+            <div class="stat-value text-red" id="reportLost">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Win Rate</span>
+                <div class="stat-icon orange"><i class="fas fa-bullseye"></i></div>
+            </div>
+            <div class="stat-value" id="reportWinRate">0.0%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Staked</span>
+                <div class="stat-icon purple"><i class="fas fa-coins"></i></div>
+            </div>
+            <div class="stat-value" id="reportTotalStaked">TZS 0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Net P/L</span>
+                <div class="stat-icon" id="reportPLIcon"><i class="fas fa-chart-line"></i></div>
+            </div>
+            <div class="stat-value" id="reportNetPL">TZS 0</div>
+        </div>
+    </div>
+
+    <!-- ==================== MONTHLY BREAKDOWN CHART ==================== -->
+    <div class="glass-card" style="margin-top:24px">
+        <div class="card-header">
+            <div class="card-title"><i class="fas fa-chart-bar"></i> Monthly Breakdown</div>
+        </div>
+        <div class="chart-container">
+            <canvas id="monthlyReportChart"></canvas>
+        </div>
+    </div>
+
+    <!-- ==================== BOOKMAKER PERFORMANCE ==================== -->
+    <div class="glass-card" style="margin-top:24px">
+        <div class="card-header">
+            <div class="card-title"><i class="fas fa-building"></i> Bookmaker Performance</div>
+        </div>
+        <div style="overflow-x:auto">
+            <table class="slips-table" id="bmReportTable">
+                <thead>
+                    <tr>
+                        <th>Bookmaker</th>
+                        <th>Balance</th>
+                        <th>Deposited</th>
+                        <th>Net P/L</th>
+                        <th>Bets</th>
+                        <th>Wins</th>
+                        <th>Losses</th>
+                        <th>ROI</th>
+                    </tr>
+                </thead>
+                <tbody id="bmReportBody">
+                    <tr><td colspan="8" class="empty-state"><p>Loading...</p></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==================== COMPLETE SLIP HISTORY (ALL DETAILS) ==================== -->
+    <div class="glass-card" style="margin-top:24px">
+        <div class="card-header">
+            <div class="card-title"><i class="fas fa-list-alt"></i> Complete Slip History</div>
+            <span class="text-muted" style="font-size:12px;" id="slipCountLabel">0 slips</span>
+        </div>
+        <div style="overflow-x:auto">
+            <table class="slips-table" id="fullSlipsTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Slip # / Name</th>
+                        <th>Bookmaker</th>
+                        <th>Matches</th>
+                        <th>Stake</th>
+                        <th>Odds</th>
+                        <th>Status</th>
+                        <th>Return</th>
+                        <th>P/L</th>
+                    </tr>
+                </thead>
+                <tbody id="fullSlipsBody">
+                    <tr><td colspan="9" class="empty-state">
+                        <i class="fas fa-file-alt" style="font-size:48px;margin-bottom:16px;display:block"></i>
+                        <p>Select a report type to generate a preview</p>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==================== PDF PREVIEW PANEL (for print/PDF) ==================== -->
+    <div id="pdfPreview" style="display:none;">
+        <!-- This content is styled for PDF export -->
+    </div>
+</div>
+
+<!-- ==================== CUSTOM RANGE MODAL ==================== -->
+<div class="modal-overlay" id="customRangeModal">
+    <div class="modal" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-calendar" style="color:var(--accent-blue);margin-right:8px"></i> Custom Date Range</div>
+            <button class="modal-close" onclick="closeCustomRange()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Start Date</label>
+                <input type="date" class="form-input" id="customStartDate">
+            </div>
+            <div class="form-group">
+                <label class="form-label">End Date</label>
+                <input type="date" class="form-input" id="customEndDate">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeCustomRange()">Cancel</button>
+            <button class="btn btn-primary" onclick="generateCustomReport()"><i class="fas fa-check"></i> Generate Report</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPeriod = 'all';
+let currentSlips = [];
+let currentBookmakers = [];
+let monthlyChart = null;
+
+// ==================== LOAD ALL DATA ====================
+async function loadAllData() {
+    try {
+        const [slipsRes, bmRes] = await Promise.all([
+            fetch('/api/slips'),
+            fetch('/api/bookmakers')
+        ]);
+        currentSlips = await slipsRes.json();
+        currentBookmakers = await bmRes.json();
+        
+        // Default: show all
+        generateReport('all');
+        loadMonthlyChart();
+        loadBookmakerReport();
+        
+    } catch (err) {
+        console.error('Load data error:', err);
+        showToast('Failed to load data', 'error');
+    }
+}
+
+// ==================== GENERATE REPORT ====================
+async function generateReport(period) {
+    currentPeriod = period;
+    showToast(`Generating ${period} report...`, 'info');
+    
+    const now = new Date();
+    let filtered = [...currentSlips];
+    let title = '';
+    
+    switch(period) {
+        case 'today':
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            filtered = currentSlips.filter(s => {
+                const d = new Date(s.created_at || s.match_datetime);
+                return d >= todayStart;
+            });
+            title = "Today's Report";
+            break;
+        case 'week':
+            const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= weekAgo);
+            title = "This Week's Report";
+            break;
+        case 'month':
+            const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= monthAgo);
+            title = "This Month's Report";
+            break;
+        case 'year':
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= yearStart);
+            title = "This Year's Report";
+            break;
+        case 'all':
+            title = "All Time Report";
+            break;
+    }
+    
+    renderReport(title, filtered);
+    showToast('Report generated!', 'success');
+}
+
+// ==================== RENDER REPORT DATA ====================
+function renderReport(title, slips) {
+    // Stats
+    const totalBets = slips.length;
+    const won = slips.filter(s => s.status === 'won').length;
+    const lost = slips.filter(s => s.status === 'lost').length;
+    const pending = slips.filter(s => s.status === 'pending').length;
+    const voided = slips.filter(s => s.status === 'void').length;
+    const cashed = slips.filter(s => s.status === 'cashed').length;
+    const totalStaked = slips.reduce((sum, s) => sum + s.stake, 0);
+    const totalProfit = slips.reduce((sum, s) => sum + s.profit_loss, 0);
+    const settled = won + lost + cashed + voided;
+    const strikeRate = settled > 0 ? (won / settled * 100).toFixed(1) : 0;
+    
+    document.getElementById('reportTotalSlips').textContent = totalBets;
+    document.getElementById('reportWon').textContent = won;
+    document.getElementById('reportLost').textContent = lost;
+    document.getElementById('reportWinRate').textContent = strikeRate + '%';
+    document.getElementById('reportTotalStaked').textContent = formatCurrency(totalStaked);
+    
+    const netEl = document.getElementById('reportNetPL');
+    netEl.textContent = (totalProfit >= 0 ? '+' : '') + formatCurrency(totalProfit);
+    netEl.style.color = totalProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+    
+    const plIcon = document.getElementById('reportPLIcon');
+    plIcon.className = 'stat-icon ' + (totalProfit >= 0 ? 'green' : 'red');
+    
+    // Full slips table
+    document.getElementById('slipCountLabel').textContent = totalBets + ' slips';
+    const tbody = document.getElementById('fullSlipsBody');
+    
+    if (slips.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="9" class="empty-state">
+                <i class="fas fa-inbox" style="font-size:48px;color:var(--glass-border)"></i>
+                <h3>No slips in this period</h3>
+            </td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = slips.map(s => {
+        const statusClass = s.status === 'won' ? 'badge-won' : 
+                           s.status === 'lost' ? 'badge-lost' : 
+                           s.status === 'cashed' ? 'badge-cashed' : 
+                           s.status === 'void' ? 'badge-void' : 'badge-pending';
+        
+        const profitClass = s.profit_loss > 0 ? 'profit-positive' : 
+                           s.profit_loss < 0 ? 'profit-negative' : '';
+        
+        const profitText = s.status === 'pending' ? '—' : 
+                          (s.profit_loss >= 0 ? '+' : '') + formatCurrency(s.profit_loss);
+        
+        const returnText = s.status === 'pending' ? '—' : formatCurrency(s.return_amount || 0);
+        
+        const date = new Date(s.created_at || s.match_datetime);
+        const dateStr = date.toLocaleDateString('en-GB', { 
+            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+        });
+        
+        const matchCount = parseMatches(s.matches).length || 1;
+        
+        return `
+        <tr>
+            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap;">${dateStr}</td>
+            <td>
+                <strong>${s.slip_number}</strong>
+                ${s.slip_name ? '<br><small class="text-muted">' + s.slip_name + '</small>' : ''}
+            </td>
+            <td>${s.bookmaker_name || '-'}</td>
+            <td style="color:var(--text-muted);font-size:12px;">${matchCount} match${matchCount !== 1 ? 'es' : ''}</td>
+            <td class="stake-display">${formatCurrency(s.stake)}</td>
+            <td class="odds-display">${s.odds ? s.odds.toFixed(2) : '—'}</td>
+            <td><span class="badge ${statusClass}">${s.status}</span></td>
+            <td class="stake-display">${returnText}</td>
+            <td class="profit-display ${profitClass}">${profitText}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ==================== BOOKMAKER REPORT ====================
+async function loadBookmakerReport() {
+    const tbody = document.getElementById('bmReportBody');
+    
+    if (currentBookmakers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No bookmakers added yet</p></td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = currentBookmakers.map(bm => {
+        const netPL = (bm.balance || 0) - (bm.total_deposited || 0) + (bm.total_withdrawn || 0);
+        return `
+        <tr>
+            <td><strong>${bm.name}</strong></td>
+            <td>${formatCurrency(bm.balance || 0)}</td>
+            <td>${formatCurrency(bm.total_deposited || 0)}</td>
+            <td class="${netPL >= 0 ? 'profit-positive' : 'profit-negative'}">
+                ${netPL >= 0 ? '+' : ''}${formatCurrency(netPL)}
+            </td>
+            <td>${bm.total_bets || 0}</td>
+            <td>${bm.total_wins || 0}</td>
+            <td>${bm.total_losses || 0}</td>
+            <td style="color:${bm.roi >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'};font-weight:700">
+                ${bm.roi > 0 ? '+' : ''}${bm.roi.toFixed(1)}%
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ==================== MONTHLY CHART ====================
+async function loadMonthlyChart() {
+    try {
+        const res = await fetch('/api/analytics/monthly');
+        const data = await res.json();
+        
+        const ctx = document.getElementById('monthlyReportChart').getContext('2d');
+        
+        if (monthlyChart) monthlyChart.destroy();
+        
+        monthlyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Monthly P/L',
+                    data: data.data,
+                    backgroundColor: data.data.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+                    borderColor: data.data.map(v => v >= 0 ? '#22c55e' : '#ef4444'),
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => (ctx.raw >= 0 ? '+' : '') + formatCurrency(ctx.raw)
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                    y: { 
+                        grid: { color: 'rgba(255,255,255,0.03)' }, 
+                        ticks: { color: '#64748b', callback: v => formatCurrency(v) } 
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Monthly chart error:', err);
+    }
+}
+
+// ==================== PDF EXPORT (DOWNLOADABLE) ====================
+function exportPDF() {
+    showToast('Generating PDF report...', 'info');
+    
+    // Build URL with current period
+    let url = '/api/reports/pdf?period=' + currentPeriod;
+    
+    if (currentPeriod === 'custom') {
+        const start = document.getElementById('customStartDate').value;
+        const end = document.getElementById('customEndDate').value;
+        if (start && end) {
+            url += '&start_date=' + start + '&end_date=' + end;
+        }
+    }
+    
+    // Open in new tab for download
+    window.open(url, '_blank');
+    showToast('PDF download started!', 'success');
+}
+
+// ==================== CUSTOM RANGE ====================
+function showCustomRange() {
+    document.getElementById('customRangeModal').classList.add('active');
+}
+
+function closeCustomRange() {
+    document.getElementById('customRangeModal').classList.remove('active');
+}
+
+function generateCustomReport() {
+    const start = document.getElementById('customStartDate').value;
+    const end = document.getElementById('customEndDate').value;
+    
+    if (!start || !end) {
+        showToast('Please select both dates', 'error');
+        return;
+    }
+    
+    currentPeriod = 'custom';
+    closeCustomRange();
+    
+    const filtered = currentSlips.filter(s => {
+        const d = new Date(s.created_at || s.match_datetime);
+        const sDate = new Date(start);
+        const eDate = new Date(end);
+        eDate.setHours(23, 59, 59);
+        return d >= sDate && d <= eDate;
+    });
+    
+    renderReport(`Report: ${start} to ${end}`, filtered);
+    showToast('Custom report generated!', 'success');
+}
+
+// ==================== JSON EXPORT ====================
+function exportJSON() {
+    const data = {
+        generated_at: new Date().toISOString(),
+        period: currentPeriod,
+        summary: {
+            total_slips: currentSlips.length,
+            total_staked: currentSlips.reduce((s, x) => s + x.stake, 0),
+            total_profit: currentSlips.reduce((s, x) => s + x.profit_loss, 0)
+        },
+        slips: currentSlips,
+        bookmakers: currentBookmakers
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BOS_Report_${currentPeriod}_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showToast('JSON exported!', 'success');
+}
+
+// ==================== MODAL CLOSE ====================
+document.getElementById('customRangeModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCustomRange();
+});
+
+document.addEventListener('DOMContentLoaded', loadAllData);
+</script>
+{% endblock %}

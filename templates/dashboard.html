@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - BOS GEMN{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Welcome back, here's your betting overview{% endblock %}
+
+{% block content %}
+<div class="section active" id="dashboard">
+
+    <!-- ==================== MARGIN ALERT BANNER (RED/YELLOW) ==================== -->
+    <div id="marginAlert" style="display:none;"></div>
+
+    <!-- ==================== STATS GRID (ALL HYPERLINKED) ==================== -->
+    <div class="stats-grid" id="statsGrid">
+        
+        <!-- Total Bankroll → links to Bankroll page -->
+        <a href="/bankroll" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Bankroll</span>
+                <div class="stat-icon blue"><i class="fas fa-wallet"></i></div>
+            </div>
+            <div class="stat-value" id="bankrollValue">TZS 0</div>
+            <div class="stat-change" id="bankrollChange">
+                <span id="bankrollNetPL">Net P/L: TZS 0</span>
+            </div>
+        </a>
+        
+        <!-- Total Deposited → links to Bankroll page -->
+        <a href="/bankroll" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Deposited</span>
+                <div class="stat-icon purple"><i class="fas fa-money-bill-wave"></i></div>
+            </div>
+            <div class="stat-value" id="totalDeposited">TZS 0</div>
+            <div class="stat-change text-muted" id="depositCount">Across 0 bookmakers</div>
+        </a>
+        
+        <!-- Net Profit/Loss → links to Reports -->
+        <a href="/reports" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Net P/L</span>
+                <div class="stat-icon" id="plIcon"><i class="fas fa-chart-line"></i></div>
+            </div>
+            <div class="stat-value" id="netPL">TZS 0</div>
+            <div class="stat-change" id="roiDisplay">ROI: 0.0%</div>
+        </a>
+        
+        <!-- Active Slips → links to Slips page (pending) -->
+        <a href="/slips?status=pending" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Active Slips</span>
+                <div class="stat-icon cyan"><i class="fas fa-clock"></i></div>
+            </div>
+            <div class="stat-value" id="pendingBets">0</div>
+            <div class="stat-change text-muted" id="pendingStake">TZS 0 at stake</div>
+        </a>
+        
+        <!-- Win Rate → links to Analytics -->
+        <a href="/analytics" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Win Rate</span>
+                <div class="stat-icon orange"><i class="fas fa-bullseye"></i></div>
+            </div>
+            <div class="stat-value" id="strikeRate">0.0%</div>
+            <div class="stat-change" id="strikeDetail">0 wins / 0 bets</div>
+        </a>
+        
+        <!-- Current Streak → links to Analytics -->
+        <a href="/analytics" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Current Streak</span>
+                <div class="stat-icon green"><i class="fas fa-fire"></i></div>
+            </div>
+            <div class="stat-value" id="streakValue">W0</div>
+            <div class="streak-display" style="margin-top:8px" id="streakDisplay"></div>
+        </a>
+    </div>
+
+    <!-- ==================== PROFIT/LOSS GRAPH (UP=GREEN, DOWN=RED) ==================== -->
+    <div class="content-grid">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-chart-area"></i> Profit / Loss Trend</div>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchChartPeriod(this, 7)">7D</button>
+                    <button class="tab" onclick="switchChartPeriod(this, 30)">30D</button>
+                    <button class="tab" onclick="switchChartPeriod(this, 90)">90D</button>
+                    <button class="tab" onclick="switchChartPeriod(this, 365)">YTD</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="profitChart"></canvas>
+            </div>
+            <!-- Legend -->
+            <div style="display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:12px;">
+                <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="width:12px;height:12px;border-radius:3px;background:var(--accent-green);display:inline-block;"></span> Profit
+                </span>
+                <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="width:12px;height:12px;border-radius:3px;background:var(--accent-red);display:inline-block;"></span> Loss
+                </span>
+            </div>
+        </div>
+        
+        <!-- Quick Stats -->
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-bolt"></i> Quick Statistics</div>
+            </div>
+            <div class="quick-stat-row">
+                <span class="quick-stat-label"><i class="fas fa-trophy" style="color:var(--accent-orange)"></i> Best Market</span>
+                <span class="quick-stat-value" id="bestMarket">—</span>
+            </div>
+            <div class="quick-stat-row">
+                <span class="quick-stat-label"><i class="fas fa-star" style="color:var(--accent-purple)"></i> Best Bookmaker</span>
+                <span class="quick-stat-value" id="bestBookmaker">—</span>
+            </div>
+            <div class="quick-stat-row">
+                <span class="quick-stat-label"><i class="fas fa-chart-bar" style="color:var(--accent-blue)"></i> Avg Odds</span>
+                <span class="quick-stat-value" id="avgOdds">0.00</span>
+            </div>
+            <div class="quick-stat-row">
+                <span class="quick-stat-label"><i class="fas fa-money-bill" style="color:var(--accent-green)"></i> Avg Stake</span>
+                <span class="quick-stat-value" id="avgStake">TZS 0</span>
+            </div>
+            <div class="quick-stat-row">
+                <span class="quick-stat-label"><i class="fas fa-percentage" style="color:var(--accent-cyan)"></i> Total Yield</span>
+                <span class="quick-stat-value" id="totalYield">0.0%</span>
+            </div>
+            <div style="margin-top:12px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
+                    <span>Win Rate by Confidence</span>
+                    <span id="highConfRate">High: 0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="confidenceBar" style="width:0%;background:linear-gradient(90deg,var(--accent-green),var(--accent-cyan))"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== LATEST SLIPS (SLIP # / NAME, NO MATCH TITLE) ==================== -->
+    <div class="glass-card">
+        <div class="card-header">
+            <div class="card-title"><i class="fas fa-history"></i> Latest Slips</div>
+            <a href="/slips" class="btn" style="font-size:12px">View All <i class="fas fa-arrow-right"></i></a>
+        </div>
+        <div style="overflow-x:auto">
+            <table class="slips-table">
+                <thead>
+                    <tr>
+                        <th>Slip # / Name</th>
+                        <th>Bookmaker</th>
+                        <th>Matches</th>
+                        <th>Stake</th>
+                        <th>Total Odds</th>
+                        <th>Status</th>
+                        <th>P/L</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="latestSlipsBody">
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div style="padding:40px">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Loading slips...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let profitChart = null;
+let currentPeriod = 7;
+
+// ==================== LOAD DASHBOARD ====================
+async function loadDashboard() {
+    try {
+        const statsRes = await fetch('/api/dashboard/stats');
+        const stats = await statsRes.json();
+        
+        // Bankroll (real from bookmaker deposits)
+        document.getElementById('bankrollValue').textContent = formatCurrency(stats.total_bankroll);
+        document.getElementById('totalDeposited').textContent = formatCurrency(stats.total_deposited);
+        document.getElementById('depositCount').textContent = 'Across ' + stats.bookmaker_count + ' bookmakers';
+        
+        // Net P/L
+        const netPL = stats.total_bankroll - stats.total_deposited;
+        const netEl = document.getElementById('netPL');
+        netEl.textContent = (netPL >= 0 ? '+' : '') + formatCurrency(netPL);
+        netEl.style.color = netPL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        
+        document.getElementById('bankrollNetPL').textContent = 'Net P/L: ' + (netPL >= 0 ? '+' : '') + formatCurrency(netPL);
+        document.getElementById('bankrollNetPL').style.color = netPL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        
+        // P/L Icon color
+        const plIcon = document.getElementById('plIcon');
+        plIcon.className = 'stat-icon ' + (netPL >= 0 ? 'green' : 'red');
+        
+        // ROI
+        document.getElementById('roiDisplay').textContent = 'ROI: ' + stats.roi + '%';
+        document.getElementById('roiDisplay').className = 'stat-change ' + (stats.roi >= 0 ? 'positive' : 'negative');
+        
+        // Active slips
+        document.getElementById('pendingBets').textContent = stats.pending_bets;
+        document.getElementById('pendingStake').textContent = formatCurrency(stats.pending_stake) + ' at stake';
+        
+        // Win rate
+        document.getElementById('strikeRate').textContent = stats.strike_rate + '%';
+        document.getElementById('strikeDetail').textContent = stats.total_wins + ' wins / ' + (stats.total_wins + stats.total_losses) + ' settled';
+        
+        // Streak
+        const streakType = stats.streak_type || 'win';
+        document.getElementById('streakValue').textContent = (streakType === 'win' ? 'W' : 'L') + stats.streak;
+        document.getElementById('streakValue').style.color = streakType === 'win' ? 'var(--accent-green)' : 'var(--accent-red)';
+        
+        let streakHtml = [];
+        for (let i = 0; i < Math.min(stats.streak, 10); i++) {
+            streakHtml.push('<span class="streak-dot ' + streakType + '"></span>');
+        }
+        document.getElementById('streakDisplay').innerHTML = streakHtml.join('');
+        
+        // Avg stats
+        document.getElementById('avgOdds').textContent = stats.avg_odds.toFixed(2);
+        document.getElementById('avgStake').textContent = formatCurrency(stats.avg_stake);
+        
+        // ==================== MARGIN ALERTS ====================
+        checkMarginAlert(stats);
+        
+        loadProfitChart(currentPeriod);
+        loadLatestSlips();
+        loadQuickAnalytics();
+        
+    } catch (err) {
+        console.error('Dashboard load error:', err);
+    }
+}
+
+// ==================== MARGIN ALERT CHECK ====================
+function checkMarginAlert(stats) {
+    const alertDiv = document.getElementById('marginAlert');
+    if (!stats.margin_alert) {
+        alertDiv.style.display = 'none';
+        return;
+    }
+    
+    const lossPct = Math.abs(stats.roi);
+    const margin = stats.margin_alert === 'red' ? stats.red_margin : stats.yellow_margin;
+    const icon = stats.margin_alert === 'red' ? '🚨' : '⚠️';
+    const title = stats.margin_alert === 'red' ? 'CRITICAL' : 'WARNING';
+    const msg = stats.margin_alert === 'red' 
+        ? `Bankroll dropped ${lossPct.toFixed(1)}% below deposits. Red margin: ${margin}%`
+        : `Bankroll dropped ${lossPct.toFixed(1)}% below deposits. Yellow margin: ${margin}%`;
+    
+    alertDiv.innerHTML = `
+        <div class="alert-banner ${stats.margin_alert}">
+            ${icon} ${title}: ${msg}
+        </div>
+    `;
+    alertDiv.style.display = 'block';
+}
+
+// ==================== LATEST SLIPS (SLIP # / NAME ONLY) ====================
+async function loadLatestSlips() {
+    try {
+        const res = await fetch('/api/slips');
+        const slips = await res.json();
+        const tbody = document.getElementById('latestSlipsBody');
+        
+        if (slips.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="empty-state">
+                        <div style="padding:40px">
+                            <i class="fas fa-receipt" style="font-size:48px;color:var(--glass-border)"></i>
+                            <h3>No slips yet</h3>
+                            <p>Add your first slip to get started</p>
+                            <button class="btn btn-primary" style="margin-top:16px;" onclick="openModal()">
+                                <i class="fas fa-plus"></i> Add First Slip
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+            return;
+        }
+        
+        // Show latest 5 slips
+        tbody.innerHTML = slips.slice(0, 5).map(function(slip) {
+            const statusClass = slip.status === 'won' ? 'badge-won' : 
+                                slip.status === 'lost' ? 'badge-lost' : 
+                                slip.status === 'cashed' ? 'badge-cashed' : 'badge-pending';
+            
+            const profitClass = slip.profit_loss > 0 ? 'profit-positive' : 
+                                slip.profit_loss < 0 ? 'profit-negative' : '';
+            
+            const profitText = slip.status === 'pending' ? '—' : 
+                               (slip.profit_loss >= 0 ? '+' : '') + formatCurrency(slip.profit_loss);
+            
+            const date = new Date(slip.created_at || slip.match_datetime);
+            const dateStr = date.toLocaleDateString('en-GB', { 
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+            });
+            
+            // Matches count
+            const matchCount = parseMatches(slip.matches).length || 1;
+            
+            return `
+            <tr>
+                <td>
+                    <a href="/slips?id=${slip.id}" class="slip-link">
+                        <strong>${slip.slip_number}</strong>
+                        ${slip.slip_name ? '<br><small>' + slip.slip_name + '</small>' : ''}
+                    </a>
+                </td>
+                <td>
+                    ${slip.bookmaker_name ? '<span style="color:var(--text-secondary);">' + slip.bookmaker_name + '</span>' : '-'}
+                </td>
+                <td>
+                    <span style="color:var(--text-muted);font-size:12px;">${matchCount} match${matchCount !== 1 ? 'es' : ''}</span>
+                </td>
+                <td class="stake-display">${formatCurrency(slip.stake)}</td>
+                <td class="odds-display">${slip.odds ? slip.odds.toFixed(2) : '—'}</td>
+                <td><span class="badge ${statusClass}">${slip.status}</span></td>
+                <td class="profit-display ${profitClass}">${profitText}</td>
+                <td style="color:var(--text-muted);font-size:12px">${dateStr}</td>
+                <td>
+                    <div class="action-btns">
+                        ${slip.status === 'pending' ? 
+                        `<button class="action-btn win" onclick="updateSlipStatus(${slip.id}, 'won')" title="Mark as Won"><i class="fas fa-check"></i></button>
+                         <button class="action-btn loss" onclick="updateSlipStatus(${slip.id}, 'lost')" title="Mark as Lost"><i class="fas fa-times"></i></button>
+                         <button class="action-btn pending" onclick="updateSlipStatus(${slip.id}, 'void')" title="Mark as Void"><i class="fas fa-ban"></i></button>` : ''}
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+        
+    } catch (err) {
+        console.error('Latest slips error:', err);
+    }
+}
+
+// ==================== QUICK ANALYTICS ====================
+async function loadQuickAnalytics() {
+    try {
+        // Best market
+        const marketRes = await fetch('/api/analytics/by-market');
+        const markets = await marketRes.json();
+        if (markets.length > 0) {
+            document.getElementById('bestMarket').textContent = markets[0].name;
+        }
+        
+        // Best bookmaker
+        const bmRes = await fetch('/api/analytics/by-bookmaker');
+        const bms = await bmRes.json();
+        if (bms.length > 0) {
+            document.getElementById('bestBookmaker').textContent = bms[0].name;
+        }
+        
+        // All slips for yield calc
+        const slipsRes = await fetch('/api/slips');
+        const slips = await slipsRes.json();
+        
+        const totalStaked = slips.reduce((sum, s) => sum + s.stake, 0);
+        const totalProfit = slips.reduce((sum, s) => sum + s.profit_loss, 0);
+        const yieldPct = totalStaked > 0 ? (totalProfit / totalStaked * 100).toFixed(1) : 0;
+        document.getElementById('totalYield').textContent = yieldPct + '%';
+        document.getElementById('totalYield').style.color = yieldPct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        
+        // Confidence
+        const highConf = slips.filter(s => s.confidence >= 4 && s.status !== 'pending');
+        const highConfWins = highConf.filter(s => s.status === 'won').length;
+        const highConfRate = highConf.length > 0 ? Math.round(highConfWins / highConf.length * 100) : 0;
+        document.getElementById('highConfRate').textContent = 'High: ' + highConfRate + '%';
+        document.getElementById('confidenceBar').style.width = highConfRate + '%';
+        
+    } catch (err) {
+        console.error('Quick analytics error:', err);
+    }
+}
+
+// ==================== PROFIT/LOSS CHART (GREEN=UP, RED=DOWN) ====================
+async function loadProfitChart(days) {
+    try {
+        const res = await fetch('/api/dashboard/profit-chart?days=' + days);
+        const data = await res.json();
+        
+        const ctx = document.getElementById('profitChart');
+        if (!ctx) return;
+        
+        if (profitChart) profitChart.destroy();
+        
+        profitChart = new Chart(ctx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Daily P/L',
+                    data: data.daily_data,
+                    backgroundColor: data.daily_data.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+                    borderColor: data.daily_data.map(v => v >= 0 ? '#22c55e' : '#ef4444'),
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const val = ctx.raw;
+                                return (val >= 0 ? '+' : '') + formatCurrency(val);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#64748b', font: { size: 11 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: {
+                            color: '#64748b',
+                            callback: function(v) { return formatCurrency(v); }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Chart error:', err);
+    }
+}
+
+function switchChartPeriod(btn, days) {
+    const tabs = btn.parentElement.querySelectorAll('.tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    currentPeriod = days;
+    loadProfitChart(days);
+}
+
+// ==================== UPDATE SLIP STATUS ====================
+async function updateSlipStatus(id, status) {
+    try {
+        const res = await fetch(`/api/slips/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        if (res.ok) {
+            showToast(`Slip marked as ${status}`, 'success');
+            loadDashboard();
+            loadLatestSlips();
+        }
+    } catch (err) {
+        showToast('Failed to update status', 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}

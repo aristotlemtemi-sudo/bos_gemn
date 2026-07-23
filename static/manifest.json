@@ -1,0 +1,21 @@
+{
+  "name": "BOS GEMN - Betting Oversight System",
+  "short_name": "BOS GEMN",
+  "description": "Professional Betting Oversight & Bankroll Tracking System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#0a0e1a",
+  "icons": [
+    {
+      "src": "/static/uploads/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/uploads/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

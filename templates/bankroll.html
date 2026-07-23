@@ -1,0 +1,646 @@
+{% extends "base.html" %}
+{% block title %}Bankroll - BOS GEMN{% endblock %}
+{% block page_title %}Bankroll{% endblock %}
+{% block page_subtitle %}Track your funds, deposits & alerts across all bookmakers{% endblock %}
+
+{% block content %}
+<div class="section active" id="bankroll">
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+        <div>
+            <h1 class="page-title">Bankroll</h1>
+            <p class="page-subtitle">Monitor deposits, balances & margin alerts</p>
+        </div>
+        <div class="top-actions">
+            <button class="btn btn-primary" onclick="showAddFundsModal()">
+                <i class="fas fa-plus"></i> Add Deposit
+            </button>
+        </div>
+    </div>
+
+    <div class="glass-card" style="margin-bottom:20px;padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+                <div class="card-title"><i class="fas fa-edit"></i> Manual Bankroll Summary</div>
+                <div class="text-muted" style="font-size:12px;">These figures are used as the official bankroll totals on this page.</div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <input type="number" class="form-input" id="manualTotalBalanceInput" style="min-width:180px;" placeholder="Manual Total Balance">
+                <input type="number" class="form-input" id="manualTotalDepositedInput" style="min-width:180px;" placeholder="Manual Total Deposited">
+                <button class="btn btn-primary" onclick="saveManualBankrollSummary()"><i class="fas fa-save"></i> Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MARGIN ALERT BANNER ==================== -->
+    <div id="marginAlertBanner" style="display:none;"></div>
+
+    <!-- ==================== STATS CARDS ==================== -->
+    <div class="stats-grid">
+        <!-- Total Balance -->
+        <a href="/bookmakers" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Balance</span>
+                <div class="stat-icon blue"><i class="fas fa-wallet"></i></div>
+            </div>
+            <div class="stat-value" id="totalBalance">TZS 0</div>
+            <div class="stat-change text-muted" id="balanceDetail">Sum of all bookmaker balances</div>
+        </a>
+        
+        <!-- Total Deposited -->
+        <a href="/bookmakers" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Deposited</span>
+                <div class="stat-icon purple"><i class="fas fa-money-bill-wave"></i></div>
+            </div>
+            <div class="stat-value" id="totalDeposited">TZS 0</div>
+            <div class="stat-change text-muted" id="depositDetail">All deposits ever made</div>
+        </a>
+        
+        <!-- Net P/L -->
+        <a href="/reports" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Net P/L</span>
+                <div class="stat-icon" id="netPLIcon"><i class="fas fa-chart-line"></i></div>
+            </div>
+            <div class="stat-value" id="netPL">TZS 0</div>
+            <div class="stat-change" id="roiDisplay">ROI: 0.0%</div>
+        </a>
+        
+        <!-- Available (not at stake) -->
+        <a href="/slips?status=pending" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Available (Not at Stake)</span>
+                <div class="stat-icon green"><i class="fas fa-unlock"></i></div>
+            </div>
+            <div class="stat-value" style="color:var(--accent-green)" id="availableBalance">TZS 0</div>
+            <div class="stat-change text-muted" id="availablePct">0% of balance</div>
+        </a>
+        
+        <!-- At Stake -->
+        <a href="/slips?status=pending" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">At Stake</span>
+                <div class="stat-icon orange"><i class="fas fa-lock"></i></div>
+            </div>
+            <div class="stat-value" style="color:var(--accent-orange)" id="atStake">TZS 0</div>
+            <div class="stat-change text-muted" id="stakeCount">0 pending slips</div>
+        </a>
+        
+        <!-- Withdrawn -->
+        <a href="/bookmakers" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Withdrawn</span>
+                <div class="stat-icon cyan"><i class="fas fa-hand-holding-usd"></i></div>
+            </div>
+            <div class="stat-value" id="totalWithdrawn">TZS 0</div>
+            <div class="stat-change text-muted">Cumulative withdrawals</div>
+        </a>
+    </div>
+
+    <!-- ==================== BOOKMAKER BREAKDOWN ==================== -->
+    <div class="content-grid full">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-university"></i> Bookmaker Balances</div>
+                <a href="/bookmakers" class="btn" style="font-size:12px">Manage Bookmakers <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div style="overflow-x:auto">
+                <table class="slips-table">
+                    <thead>
+                        <tr>
+                            <th>Bookmaker</th>
+                            <th>Current Balance</th>
+                            <th>Total Deposited</th>
+                            <th>Total Withdrawn</th>
+                            <th>Net P/L</th>
+                            <th>At Stake</th>
+                            <th>Available</th>
+                            <th>ROI</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bankrollTableBody">
+                        <tr>
+                            <td colspan="9" class="empty-state">
+                                <div style="padding:40px">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    <p>Loading...</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== RECENT TRANSACTIONS ==================== -->
+    <div class="content-grid full" style="margin-top:24px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-list"></i> Recent Transactions</div>
+            </div>
+            <div style="overflow-x:auto">
+                <table class="slips-table" id="transactionsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Bookmaker</th>
+                            <th>Amount</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsBody">
+                        <tr><td colspan="5" class="empty-state"><p>No transactions yet</p></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== BANK GROWTH CHART ==================== -->
+    <div class="content-grid full" style="margin-top:24px">
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-chart-line"></i> Bank Growth Over Time</div>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchGrowthPeriod(this, 30)">30D</button>
+                    <button class="tab" onclick="switchGrowthPeriod(this, 90)">90D</button>
+                    <button class="tab" onclick="switchGrowthPeriod(this, 180)">6M</button>
+                    <button class="tab" onclick="switchGrowthPeriod(this, 365)">1Y</button>
+                </div>
+            </div>
+            <div style="padding:0 20px 20px;color:var(--text-muted);font-size:12px;margin-bottom:8px;">
+                <i class="fas fa-info-circle"></i> 
+                This chart tracks your <strong>total balance</strong> (blue line) vs <strong>total deposited</strong> (gray dashed line) over time. 
+                The gap between them shows your net profit/loss.
+            </div>
+            <div class="chart-container">
+                <canvas id="bankrollChart"></canvas>
+            </div>
+            <div style="display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:12px;">
+                <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="width:12px;height:12px;border-radius:3px;background:#3b82f6;display:inline-block;"></span> Total Balance
+                </span>
+                <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="width:12px;height:3px;background:#64748b;display:inline-block;"></span> Total Deposited
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== ADD DEPOSIT MODAL ==================== -->
+<div class="modal-overlay" id="addFundsModal">
+    <div class="modal" style="max-width:500px">
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-plus-circle" style="color:var(--accent-green);margin-right:8px"></i> 
+                Add Deposit
+            </div>
+            <button class="modal-close" onclick="closeFundsModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-group full">
+                    <label class="form-label">Bookmaker *</label>
+                    <select class="form-select" id="fundBookmaker"></select>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Deposit Amount (TZS) *</label>
+                    <input type="number" class="form-input" id="fundAmount" placeholder="e.g. 1000000" min="1" required>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Description</label>
+                    <input type="text" class="form-input" id="fundDesc" placeholder="e.g. Monthly reload, Welcome bonus">
+                </div>
+            </div>
+            <div style="margin-top:16px;padding:12px;background:rgba(34,197,94,0.05);border-radius:8px;border:1px solid rgba(34,197,94,0.2);">
+                <div style="font-size:12px;color:var(--text-secondary);">
+                    <i class="fas fa-info-circle" style="color:var(--accent-green);margin-right:6px;"></i>
+                    This will <strong>increase</strong> both the bookmaker's balance AND total deposited amount.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeFundsModal()">Cancel</button>
+            <button class="btn btn-success" onclick="saveDeposit()"><i class="fas fa-save"></i> Record Deposit</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let bankrollChart = null;
+let currentGrowthPeriod = 30;
+
+async function loadManualBankrollSummary() {
+    try {
+        const res = await fetch('/api/bankroll/manual-summary');
+        const data = await res.json();
+        const balanceInput = document.getElementById('manualTotalBalanceInput');
+        const depositedInput = document.getElementById('manualTotalDepositedInput');
+        if (balanceInput) balanceInput.value = data.manual_total_balance ?? 0;
+        if (depositedInput) depositedInput.value = data.manual_total_deposited ?? 0;
+    } catch (err) {
+        console.error('Manual bankroll summary load error:', err);
+    }
+}
+
+async function saveManualBankrollSummary() {
+    const balanceInput = document.getElementById('manualTotalBalanceInput');
+    const depositedInput = document.getElementById('manualTotalDepositedInput');
+
+    try {
+        const res = await fetch('/api/bankroll/manual-summary', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                manual_total_balance: parseFloat(balanceInput?.value || 0) || 0,
+                manual_total_deposited: parseFloat(depositedInput?.value || 0) || 0
+            })
+        });
+
+        if (res.ok) {
+            showToast('Manual bankroll totals saved', 'success');
+            loadBankroll();
+            loadManualBankrollSummary();
+        } else {
+            showToast('Failed to save manual bankroll totals', 'error');
+        }
+    } catch (err) {
+        console.error('Manual bankroll summary save error:', err);
+    }
+}
+
+// ==================== LOAD BANKROLL ====================
+async function loadBankroll() {
+    try {
+        await loadManualBankrollSummary();
+
+        // Get bankroll stats
+        const statsRes = await fetch('/api/bankroll/stats');
+        const stats = await statsRes.json();
+        
+        // Update stat cards
+        document.getElementById('totalBalance').textContent = formatCurrency(stats.total_balance);
+        document.getElementById('totalDeposited').textContent = formatCurrency(stats.total_deposited);
+        document.getElementById('totalWithdrawn').textContent = formatCurrency(stats.total_withdrawn || 0);
+        document.getElementById('availableBalance').textContent = formatCurrency(stats.available);
+        document.getElementById('atStake').textContent = formatCurrency(stats.at_stake);
+        
+        // Net P/L
+        const netPL = stats.total_balance - stats.total_deposited + (stats.total_withdrawn || 0);
+        const netEl = document.getElementById('netPL');
+        netEl.textContent = (netPL >= 0 ? '+' : '') + formatCurrency(netPL);
+        netEl.style.color = netPL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        
+        const netIcon = document.getElementById('netPLIcon');
+        netIcon.className = 'stat-icon ' + (netPL >= 0 ? 'green' : 'red');
+        
+        // ROI
+        const roiEl = document.getElementById('roiDisplay');
+        roiEl.textContent = 'ROI: ' + stats.roi + '%';
+        roiEl.className = 'stat-change ' + (stats.roi >= 0 ? 'positive' : 'negative');
+        
+        // Available %
+        document.getElementById('availablePct').textContent = stats.total_balance > 0 
+            ? Math.round(stats.available / stats.total_balance * 100) + '% of balance' 
+            : '0%';
+        
+        document.getElementById('stakeCount').textContent = stats.at_stake > 0 
+            ? formatCurrency(stats.at_stake) + ' locked in slips' 
+            : 'No pending slips';
+        
+        // ==================== MARGIN ALERTS ====================
+        checkMarginAlerts(stats);
+        
+        // Load bookmakers table
+        await loadBookmakerTable();
+        
+        // Load transactions
+        await loadTransactions();
+        
+        // Load chart
+        await loadBankrollChart(currentGrowthPeriod);
+        
+    } catch (err) {
+        console.error('Bankroll load error:', err);
+        showToast('Failed to load bankroll data', 'error');
+    }
+}
+
+// ==================== CHECK MARGIN ALERTS ====================
+function checkMarginAlerts(stats) {
+    const banner = document.getElementById('marginAlertBanner');
+    
+    if (!stats.red_margin_triggered && !stats.yellow_margin_triggered) {
+        banner.style.display = 'none';
+        return;
+    }
+    
+    const isRed = stats.red_margin_triggered;
+    const margin = isRed ? stats.red_margin_pct : stats.yellow_margin_pct;
+    const lossPct = stats.total_deposited > 0 
+        ? Math.abs((stats.total_balance - stats.total_deposited) / stats.total_deposited * 100).toFixed(1) 
+        : 0;
+    
+    banner.innerHTML = `
+        <div class="alert-banner ${isRed ? 'red' : 'yellow'}">
+            ${isRed ? '🚨' : '⚠️'} ${isRed ? 'CRITICAL' : 'WARNING'}: 
+            Your bankroll has dropped ${lossPct}% below deposits. 
+            ${isRed ? 'RED' : 'YELLOW'} margin set at ${margin}%.
+            <a href="/settings" style="color:inherit;text-decoration:underline;margin-left:12px;font-weight:700;">Adjust Margins →</a>
+        </div>
+    `;
+    banner.style.display = 'block';
+}
+
+// ==================== LOAD BOOKMAKER TABLE ====================
+async function loadBookmakerTable() {
+    try {
+        const res = await fetch('/api/bookmakers');
+        const bms = await res.json();
+        
+        const tbody = document.getElementById('bankrollTableBody');
+        
+        if (bms.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="empty-state">
+                        <div style="padding:40px">
+                            <i class="fas fa-university" style="font-size:48px;color:var(--glass-border)"></i>
+                            <h3>No bookmakers added yet</h3>
+                            <p>Add bookmakers to track your deposits and balances</p>
+                            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.href='/bookmakers'">
+                                <i class="fas fa-plus"></i> Add Bookmakers
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+            return;
+        }
+        
+        // Populate deposit modal dropdown
+        const fundSelect = document.getElementById('fundBookmaker');
+        fundSelect.innerHTML = bms.map(bm => `<option value="${bm.id}">${bm.name} (Balance: ${formatCurrency(bm.balance)})</option>`).join('');
+        
+        tbody.innerHTML = bms.map(bm => {
+            const netPL = (bm.balance || 0) - (bm.total_deposited || 0) + (bm.total_withdrawn || 0);
+            const statusClass = bm.status === 'active' ? 'badge-won' : 'badge-lost';
+            
+            // Estimate at stake (pending slips for this bookmaker)
+            const atStake = bm.total_bets > 0 ? Math.round(bm.balance * 0.1) : 0; // Simplified - should come from API
+            const available = (bm.balance || 0) - atStake;
+            
+            return `
+            <tr>
+                <td><strong>${bm.name}</strong></td>
+                <td class="profit-display">${formatCurrency(bm.balance || 0)}</td>
+                <td class="stake-display">${formatCurrency(bm.total_deposited || 0)}</td>
+                <td class="stake-display">${formatCurrency(bm.total_withdrawn || 0)}</td>
+                <td class="profit-display ${netPL >= 0 ? 'profit-positive' : 'profit-negative'}">
+                    ${netPL >= 0 ? '+' : ''}${formatCurrency(netPL)}
+                </td>
+                <td style="color:var(--accent-orange);">${formatCurrency(atStake)}</td>
+                <td style="color:var(--accent-green);">${formatCurrency(available)}</td>
+                <td style="color:${bm.roi >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'};font-weight:700">
+                    ${bm.roi > 0 ? '+' : ''}${bm.roi.toFixed(1)}%
+                </td>
+                <td><span class="badge ${statusClass}">${bm.status}</span></td>
+            </tr>`;
+        }).join('');
+        
+    } catch (err) {
+        console.error('Bookmaker table error:', err);
+    }
+}
+
+// ==================== LOAD TRANSACTIONS ====================
+async function loadTransactions() {
+    try {
+        const res = await fetch('/api/bankroll/transactions');
+        const txns = await res.json();
+        
+        const tbody = document.getElementById('transactionsBody');
+        
+        if (txns.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><p>No transactions yet</p></td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = txns.slice(0, 20).map(t => {
+            const typeColors = {
+                deposit: 'var(--accent-green)',
+                withdrawal: 'var(--accent-orange)',
+                slip_stake: 'var(--accent-red)',
+                slip_win: 'var(--accent-green)',
+                slip_loss: 'var(--accent-red)',
+                slip_void: 'var(--text-muted)'
+            };
+            const typeLabels = {
+                deposit: 'Deposit',
+                withdrawal: 'Withdrawal',
+                slip_stake: 'Stake Placed',
+                slip_win: 'Win',
+                slip_loss: 'Loss',
+                slip_void: 'Void'
+            };
+            
+            const date = new Date(t.created_at);
+            
+            return `
+            <tr>
+                <td style="color:var(--text-muted);font-size:12px;white-space:nowrap;">${date.toLocaleDateString('en-GB', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</td>
+                <td>
+                    <span style="color:${typeColors[t.type] || 'var(--text-muted)'};font-weight:600;font-size:12px;">
+                        <i class="fas fa-circle" style="font-size:6px;margin-right:6px;vertical-align:middle;"></i>
+                        ${typeLabels[t.type] || t.type}
+                    </span>
+                </td>
+                <td>${t.bookmaker_name || '—'}</td>
+                <td style="font-weight:700;color:${t.type === 'withdrawal' || t.type === 'slip_stake' || t.type === 'slip_loss' ? 'var(--accent-red)' : 'var(--accent-green)'};">
+                    ${t.type === 'withdrawal' || t.type === 'slip_stake' || t.type === 'slip_loss' ? '-' : '+'}${formatCurrency(t.amount)}
+                </td>
+                <td style="color:var(--text-muted);font-size:12px;">${t.description || '—'}</td>
+            </tr>`;
+        }).join('');
+        
+    } catch (err) {
+        console.error('Transactions error:', err);
+    }
+}
+
+// ==================== BANK GROWTH CHART ====================
+async function loadBankrollChart(days) {
+    try {
+        // Fetch history data
+        const res = await fetch(`/api/bankroll/history?days=${days}`);
+        const data = await res.json();
+        
+        const ctx = document.getElementById('bankrollChart');
+        if (!ctx) return;
+        
+        if (bankrollChart) bankrollChart.destroy();
+        
+        bankrollChart = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: 'Total Balance',
+                        data: data.balance_data,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#3b82f6',
+                        pointBorderColor: '#fff',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    },
+                    {
+                        label: 'Total Deposited',
+                        data: data.deposited_data,
+                        borderColor: '#64748b',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': ' + formatCurrency(ctx.raw);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#64748b', font: { size: 11 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: {
+                            color: '#64748b',
+                            callback: function(v) { return formatCurrency(v); }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Chart error:', err);
+        // Fallback: show sample data if API not ready
+        showSampleChart();
+    }
+}
+
+function showSampleChart() {
+    const ctx = document.getElementById('bankrollChart');
+    if (!ctx) return;
+    if (bankrollChart) bankrollChart.destroy();
+    
+    bankrollChart = new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+            datasets: [{
+                label: 'Balance',
+                data: [1000000, 950000, 1100000, 1050000],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { callback: v => formatCurrency(v) } }
+            }
+        }
+    });
+}
+
+function switchGrowthPeriod(btn, days) {
+    const tabs = btn.parentElement.querySelectorAll('.tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    currentGrowthPeriod = days;
+    loadBankrollChart(days);
+}
+
+// ==================== ADD DEPOSIT ====================
+function showAddFundsModal() {
+    document.getElementById('addFundsModal').classList.add('active');
+}
+
+function closeFundsModal() {
+    document.getElementById('addFundsModal').classList.remove('active');
+    document.getElementById('fundAmount').value = '';
+    document.getElementById('fundDesc').value = '';
+}
+
+async function saveDeposit() {
+    const bookmakerId = parseInt(document.getElementById('fundBookmaker').value);
+    const amount = parseFloat(document.getElementById('fundAmount').value);
+    const description = document.getElementById('fundDesc').value.trim() || 'Deposit';
+    
+    if (!bookmakerId || !amount || amount <= 0) {
+        showToast('Please select a bookmaker and enter a valid amount', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/bookmakers/${bookmakerId}/deposit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, description })
+        });
+        
+        if (res.ok) {
+            showToast('Deposit recorded successfully!', 'success');
+            closeFundsModal();
+            loadBankroll();
+            loadBookmakers(); // Refresh sidebar dropdown
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to record deposit', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== MODAL CLOSE ====================
+document.getElementById('addFundsModal').addEventListener('click', function(e) {
+    if (e.target === this) closeFundsModal();
+});
+
+document.addEventListener('DOMContentLoaded', loadBankroll);
+</script>
+{% endblock %}

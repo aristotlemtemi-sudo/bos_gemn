@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% block title %}All Slips - BOS GEMN{% endblock %}
+{% block page_title %}All Slips{% endblock %}
+{% block page_subtitle %}Manage and track all your betting slips{% endblock %}
+
+{% block content %}
+<div class="section active" id="slips">
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+        <div>
+            <h1 class="page-title">All Slips</h1>
+            <p class="page-subtitle">Manage and track all your betting slips</p>
+        </div>
+        <div class="top-actions">
+            <button class="btn" onclick="exportSlips()"><i class="fas fa-download"></i> Export CSV</button>
+            <button class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> New Slip</button>
+        </div>
+    </div>
+
+    <!-- SEARCH & FILTERS -->
+    <div class="search-bar">
+        <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-input" id="slipSearch" placeholder="Search by slip #, name, bookmaker, match..." oninput="filterSlips()">
+        </div>
+        <select class="form-select" id="statusFilter" style="width:160px" onchange="filterSlips()">
+            <option value="all">All Status</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+            <option value="pending">Pending</option>
+            <option value="cashed">Cashed Out</option>
+            <option value="void">Void</option>
+        </select>
+        <select class="form-select" id="bookmakerFilter" style="width:160px" onchange="filterSlips()">
+            <option value="all">All Bookmakers</option>
+        </select>
+        <input type="date" class="form-input" id="dateFilter" style="width:160px" onchange="filterSlips()">
+    </div>
+
+    <!-- SLIPS TABLE -->
+    <div class="glass-card">
+        <div style="overflow-x:auto">
+            <table class="slips-table">
+                <thead>
+                    <tr>
+                        <th>Slip # / Name</th>
+                        <th>Bookmaker</th>
+                        <th>Matches</th>
+                        <th>Stake</th>
+                        <th>Total Odds</th>
+                        <th>Potential</th>
+                        <th>Status</th>
+                        <th>P/L</th>
+                        <th>Confidence</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="slipsTableBody">
+                    <tr>
+                        <td colspan="11" class="empty-state">
+                            <div style="padding:40px">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Loading slips...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== VIEW SLIP DETAILS MODAL ==================== -->
+<div class="modal-overlay" id="viewSlipModal">
+    <div class="modal" style="max-width:700px">
+        <div class="modal-header">
+            <div class="modal-title" id="viewSlipTitle">
+                <i class="fas fa-receipt" style="color:var(--accent-blue);margin-right:8px"></i> Slip Details
+            </div>
+            <button class="modal-close" onclick="closeViewModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="viewSlipBody">
+            <!-- Populated by JS -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeViewModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let allSlips = [];
+let allBookmakers = [];
+
+// ==================== LOAD SLIPS ====================
+async function loadSlips() {
+    try {
+        const [slipsRes, bmRes] = await Promise.all([
+            fetch('/api/slips'),
+            fetch('/api/bookmakers')
+        ]);
+        allSlips = await slipsRes.json();
+        allBookmakers = await bmRes.json();
+        
+        // Populate bookmaker filter
+        const bmFilter = document.getElementById('bookmakerFilter');
+        bmFilter.innerHTML = '<option value="all">All Bookmakers</option>' + 
+            allBookmakers.map(bm => `<option value="${bm.name}">${bm.name}</option>`).join('');
+        
+        renderSlips(allSlips);
+    } catch (err) {
+        console.error('Load slips error:', err);
+        document.getElementById('slipsTableBody').innerHTML = `
+            <tr>
+                <td colspan="11" class="empty-state">
+                    <div style="padding:40px">
+                        <i class="fas fa-exclamation-circle" style="font-size:48px;color:var(--glass-border)"></i>
+                        <h3>Failed to load slips</h3>
+                        <p>Please check your connection and try again</p>
+                    </div>
+                </td>
+            </tr>`;
+    }
+}
+
+// ==================== RENDER SLIPS (SLIP # / NAME ONLY) ====================
+function renderSlips(slips) {
+    const tbody = document.getElementById('slipsTableBody');
+    
+    if (slips.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="11" class="empty-state">
+                    <div style="padding:40px">
+                        <i class="fas fa-receipt" style="font-size:48px;color:var(--glass-border)"></i>
+                        <h3>No slips found</h3>
+                        <p>Try adjusting your filters or add a new slip</p>
+                        <button class="btn btn-primary" style="margin-top:16px;" onclick="openModal()">
+                            <i class="fas fa-plus"></i> Add First Slip
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = slips.map(slip => {
+        const statusClass = slip.status === 'won' ? 'badge-won' : 
+                           slip.status === 'lost' ? 'badge-lost' : 
+                           slip.status === 'cashed' ? 'badge-cashed' : 
+                           slip.status === 'void' ? 'badge-void' : 'badge-pending';
+        
+        const profitClass = slip.profit_loss > 0 ? 'profit-positive' : 
+                           slip.profit_loss < 0 ? 'profit-negative' : '';
+        
+        const profitText = slip.status === 'pending' ? '—' : 
+                          (slip.profit_loss >= 0 ? '+' : '') + formatCurrency(slip.profit_loss);
+        
+        let matches = parseMatches(slip.matches);
+        const matchCount = matches.length || 1;
+        
+        // Confidence bars
+        const confBars = [];
+        for (let i = 1; i <= 5; i++) {
+            const active = i <= (slip.confidence || 3) ? 'active' : '';
+            const level = (slip.confidence || 3) >= 4 ? 'high' : (slip.confidence || 3) >= 3 ? 'medium' : 'low';
+            confBars.push(`<div class="confidence-bar ${active} ${active ? level : ''}"></div>`);
+        }
+        
+        const date = new Date(slip.created_at || slip.match_datetime);
+        const dateStr = date.toLocaleDateString('en-GB', { 
+            day: 'numeric', month: 'short', year: 'numeric'
+        });
+        
+        return `
+        <tr>
+            <td>
+                <a href="javascript:void(0)" class="slip-link" onclick="viewSlip(${slip.id})">
+                    <strong>${slip.slip_number}</strong>
+                    ${slip.slip_name ? '<br><small>' + slip.slip_name + '</small>' : ''}
+                </a>
+            </td>
+            <td style="color:var(--text-secondary);">${slip.bookmaker_name || '—'}</td>
+            <td>
+                <span style="color:var(--text-muted);font-size:12px;">
+                    ${matchCount} match${matchCount !== 1 ? 'es' : ''}
+                </span>
+                ${matchCount > 0 ? `<br><button class="btn btn-sm" style="padding:2px 8px;font-size:11px;margin-top:4px;" onclick="viewSlip(${slip.id})">View</button>` : ''}
+            </td>
+            <td class="stake-display">${formatCurrency(slip.stake)}</td>
+            <td class="odds-display">${slip.odds ? slip.odds.toFixed(2) : '—'}</td>
+            <td>${formatCurrency(slip.potential_return || slip.stake * (slip.odds || 1))}</td>
+            <td><span class="badge ${statusClass}">${slip.status}</span></td>
+            <td class="profit-display ${profitClass}">${profitText}</td>
+            <td><div class="confidence-meter">${confBars.join('')}</div></td>
+            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap;">${dateStr}</td>
+            <td>
+                <div class="action-btns">
+                    ${slip.status === 'pending' ? `
+                    <button class="action-btn win" onclick="updateSlipStatus(${slip.id}, 'won')" title="Mark as Won"><i class="fas fa-check"></i></button>
+                    <button class="action-btn loss" onclick="updateSlipStatus(${slip.id}, 'lost')" title="Mark as Lost"><i class="fas fa-times"></i></button>
+                    <button class="action-btn pending" onclick="updateSlipStatus(${slip.id}, 'cashed')" title="Cash Out"><i class="fas fa-hand-holding-usd"></i></button>
+                    <button class="action-btn" style="background:rgba(100,116,139,0.15);color:var(--text-muted)" onclick="updateSlipStatus(${slip.id}, 'void')" title="Void"><i class="fas fa-ban"></i></button>
+                    ` : ''}
+                    <button class="action-btn" style="background:rgba(239,68,68,0.15);color:var(--accent-red)" onclick="deleteSlip(${slip.id})" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ==================== VIEW SLIP DETAILS ====================
+function viewSlip(id) {
+    const slip = allSlips.find(s => s.id === id);
+    if (!slip) return;
+    
+    let matches = parseMatches(slip.matches);
+    
+    const statusClass = slip.status === 'won' ? 'badge-won' : 
+                       slip.status === 'lost' ? 'badge-lost' : 
+                       slip.status === 'cashed' ? 'badge-cashed' : 
+                       slip.status === 'void' ? 'badge-void' : 'badge-pending';
+    
+    const profitClass = slip.profit_loss > 0 ? 'profit-positive' : 
+                       slip.profit_loss < 0 ? 'profit-negative' : '';
+    
+    const profitText = slip.status === 'pending' ? 'Pending' : 
+                      (slip.profit_loss >= 0 ? '+' : '') + formatCurrency(slip.profit_loss);
+    
+    const date = new Date(slip.created_at || slip.match_datetime);
+    
+    document.getElementById('viewSlipTitle').innerHTML = `
+        <i class="fas fa-receipt" style="color:var(--accent-blue);margin-right:8px"></i> 
+        ${slip.slip_number} ${slip.slip_name ? '- ' + slip.slip_name : ''}
+    `;
+    
+    document.getElementById('viewSlipBody').innerHTML = `
+        <div style="margin-bottom:20px;">
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+                <div style="flex:1;min-width:200px;">
+                    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Status</div>
+                    <span class="badge ${statusClass}" style="font-size:14px;padding:6px 14px;">${slip.status.toUpperCase()}</span>
+                </div>
+                <div style="flex:1;min-width:200px;">
+                    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Bookmaker</div>
+                    <div style="font-size:16px;font-weight:600;">${slip.bookmaker_name || '—'}</div>
+                </div>
+                <div style="flex:1;min-width:200px;">
+                    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Date Placed</div>
+                    <div style="font-size:14px;">${date.toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+            </div>
+            
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;padding:16px;background:var(--bg-card);border-radius:12px;border:1px solid var(--glass-border);">
+                <div style="text-align:center;flex:1;">
+                    <div style="font-size:12px;color:var(--text-muted);">Stake</div>
+                    <div style="font-size:20px;font-weight:700;">${formatCurrency(slip.stake)}</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                    <div style="font-size:12px;color:var(--text-muted);">Odds</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent-cyan);">${slip.odds ? slip.odds.toFixed(2) : '—'}</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                    <div style="font-size:12px;color:var(--text-muted);">Potential Return</div>
+                    <div style="font-size:20px;font-weight:700;">${formatCurrency(slip.potential_return || slip.stake * (slip.odds || 1))}</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                    <div style="font-size:12px;color:var(--text-muted);">Profit / Loss</div>
+                    <div style="font-size:20px;font-weight:700;" class="${profitClass}">${profitText}</div>
+                </div>
+            </div>
+        </div>
+        
+        <h4 style="font-size:14px;font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">
+            Matches in this Slip (${matches.length})
+        </h4>
+        <div style="margin-bottom:20px;">
+            ${matches.length > 0 ? `
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--glass-border);">
+                        <th style="text-align:left;padding:10px;font-size:12px;color:var(--text-muted);">#</th>
+                        <th style="text-align:left;padding:10px;font-size:12px;color:var(--text-muted);">Event</th>
+                        <th style="text-align:left;padding:10px;font-size:12px;color:var(--text-muted);">Selection</th>
+                        <th style="text-align:right;padding:10px;font-size:12px;color:var(--text-muted);">Odds</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${matches.map((m, i) => `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                        <td style="padding:10px;color:var(--text-muted);font-size:12px;">${i + 1}</td>
+                        <td style="padding:10px;font-weight:600;">${m.event || '—'}</td>
+                        <td style="padding:10px;color:var(--text-secondary);">${m.selection || '—'}</td>
+                        <td style="padding:10px;text-align:right;font-weight:700;color:var(--accent-cyan);">${m.odds ? parseFloat(m.odds).toFixed(2) : '—'}</td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ` : `
+            <div style="padding:20px;text-align:center;color:var(--text-muted);">
+                <i class="fas fa-info-circle"></i> No match details available for this slip
+            </div>
+            `}
+        </div>
+        
+        ${slip.reasoning ? `
+        <div style="margin-bottom:16px;">
+            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Reasoning</h4>
+            <div style="padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--glass-border);font-size:13px;line-height:1.6;">${slip.reasoning}</div>
+        </div>
+        ` : ''}
+        
+        ${slip.notes ? `
+        <div style="margin-bottom:16px;">
+            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Notes</h4>
+            <div style="padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--glass-border);font-size:13px;line-height:1.6;">${slip.notes}</div>
+        </div>
+        ` : ''}
+        
+        ${slip.strategy_tag ? `
+        <div>
+            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Strategy</h4>
+            <span class="badge badge-won" style="font-size:12px;">${slip.strategy_tag}</span>
+        </div>
+        ` : ''}
+    `;
+    
+    document.getElementById('viewSlipModal').classList.add('active');
+}
+
+function closeViewModal() {
+    document.getElementById('viewSlipModal').classList.remove('active');
+}
+
+// ==================== FILTER SLIPS ====================
+function filterSlips() {
+    const search = document.getElementById('slipSearch').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    const bookmaker = document.getElementById('bookmakerFilter').value;
+    const date = document.getElementById('dateFilter').value;
+    
+    let filtered = [...allSlips];
+    
+    if (search) {
+        filtered = filtered.filter(s => {
+            const matches = parseMatches(s.matches);
+            const matchText = matches.map(m => (m.event || '') + ' ' + (m.selection || '')).join(' ').toLowerCase();
+            return (s.slip_number || '').toLowerCase().includes(search) ||
+                   (s.slip_name || '').toLowerCase().includes(search) ||
+                   (s.bookmaker_name || '').toLowerCase().includes(search) ||
+                   matchText.includes(search);
+        });
+    }
+    
+    if (status !== 'all') {
+        filtered = filtered.filter(s => s.status === status);
+    }
+    
+    if (bookmaker !== 'all') {
+        filtered = filtered.filter(s => s.bookmaker_name === bookmaker);
+    }
+    
+    if (date) {
+        const filterDate = new Date(date).toDateString();
+        filtered = filtered.filter(s => {
+            const d = new Date(s.created_at || s.match_datetime);
+            return d.toDateString() === filterDate;
+        });
+    }
+    
+    renderSlips(filtered);
+}
+
+// ==================== EXPORT SLIPS (CSV) ====================
+function exportSlips() {
+    const headers = ['Slip #', 'Slip Name', 'Bookmaker', 'Matches', 'Stake', 'Odds', 'Status', 'Profit/Loss', 'Return', 'Date', 'Strategy'];
+    
+    const rows = allSlips.map(s => {
+        let matches = parseMatches(s.matches);
+        const matchSummary = matches.map(m => `${m.event}: ${m.selection} @ ${m.odds}`).join('; ');
+        
+        return [
+            `"${s.slip_number}"`,
+            `"${s.slip_name || ''}"`,
+            `"${s.bookmaker_name || ''}"`,
+            `"${matchSummary}"`,
+            s.stake,
+            s.odds || 1,
+            s.status,
+            s.profit_loss,
+            s.return_amount || 0,
+            new Date(s.created_at || s.match_datetime).toISOString(),
+            `"${s.strategy_tag || ''}"`
+        ];
+    });
+    
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BOS_GEMN_Slips_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Slips exported to CSV', 'success');
+}
+
+// ==================== UPDATE SLIP STATUS ====================
+async function updateSlipStatus(id, status) {
+    try {
+        const res = await fetch(`/api/slips/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        
+        if (res.ok) {
+            showToast(`Slip marked as ${status}`, 'success');
+            loadSlips();
+            loadBankroll();
+        } else {
+            showToast('Failed to update status', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== DELETE SLIP ====================
+async function deleteSlip(id) {
+    if (!confirm('Are you sure you want to delete this slip?')) return;
+    
+    try {
+        const res = await fetch(`/api/slips/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Slip deleted', 'success');
+            loadSlips();
+            loadBankroll();
+        } else {
+            showToast('Failed to delete', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== MODAL CLOSE ====================
+document.getElementById('viewSlipModal').addEventListener('click', function(e) {
+    if (e.target === this) closeViewModal();
+});
+
+document.addEventListener('DOMContentLoaded', loadSlips);
+</script>
+{% endblock %}

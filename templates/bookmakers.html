@@ -1,0 +1,600 @@
+{% extends "base.html" %}
+{% block title %}Bookmakers - BOS GEMN{% endblock %}
+{% block page_title %}Bookmakers{% endblock %}
+{% block page_subtitle %}Manage your bookmaker accounts & deposits{% endblock %}
+
+{% block content %}
+<div class="section active" id="bookmakers">
+
+    <!-- STATS CARDS (HYPERLINKED TO BANKROLL) -->
+    <div class="stats-grid">
+        <a href="/bankroll" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Active Accounts</span>
+                <div class="stat-icon blue"><i class="fas fa-building"></i></div>
+            </div>
+            <div class="stat-value" id="activeAccounts">0</div>
+            <div class="stat-change text-muted">Click to view bankroll</div>
+        </a>
+        <a href="/bankroll" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Deposited</span>
+                <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
+            </div>
+            <div class="stat-value" id="totalDeposited">—</div>
+            <div class="stat-change positive">Across all bookmakers</div>
+        </a>
+        <a href="/bankroll" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Total Balance</span>
+                <div class="stat-icon purple"><i class="fas fa-wallet"></i></div>
+            </div>
+            <div class="stat-value" id="totalBalance">—</div>
+            <div class="stat-change text-muted">Current available funds</div>
+        </a>
+        <a href="/reports" class="stat-card">
+            <div class="stat-header">
+                <span class="stat-label">Best ROI</span>
+                <div class="stat-icon green"><i class="fas fa-trophy"></i></div>
+            </div>
+            <div class="stat-value" style="color:var(--accent-green)" id="bestRoi">—</div>
+            <div class="stat-change positive" id="bestRoiValue">0%</div>
+        </a>
+    </div>
+
+    <!-- BOOKMAKERS TABLE -->
+    <div class="glass-card">
+        <div style="overflow-x:auto">
+            <table class="slips-table">
+                <thead>
+                    <tr>
+                        <th>Bookmaker</th>
+                        <th>Current Balance</th>
+                        <th>Total Deposited</th>
+                        <th>Total Withdrawn</th>
+                        <th>Net P/L</th>
+                        <th>Bets</th>
+                        <th>Wins</th>
+                        <th>Losses</th>
+                        <th>ROI</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="bookmakersTableBody">
+                    <tr><td colspan="11" class="empty-state"><div style="padding:40px"><i class="fas fa-spinner fa-spin"></i><p>Loading bookmakers...</p></div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== ADD BOOKMAKER MODAL ==================== -->
+<div class="modal-overlay" id="addBookmakerModal">
+    <div class="modal" style="max-width:720px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-plus-circle" style="color:var(--accent-blue);margin-right:8px"></i> Add Bookmaker</div>
+            <button class="modal-close" onclick="closeBookmakerModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid" style="grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
+                <div class="form-group">
+                    <label class="form-label">Bookmaker Name *</label>
+                    <input type="text" class="form-input" id="bmName" placeholder="e.g. Bet365, Pinnacle, DraftKings" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Website URL</label>
+                    <input type="url" class="form-input" id="bmWebsite" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Current Balance (TZS)</label>
+                    <input type="number" class="form-input" id="bmBalance" placeholder="e.g. 1000000" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Original Deposit (TZS)</label>
+                    <input type="number" class="form-input" id="bmDeposit" placeholder="e.g. 1000000" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contact Person</label>
+                    <input type="text" class="form-input" id="bmContactPerson" placeholder="e.g. John Mtega">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="text" class="form-input" id="bmPhone" placeholder="e.g. +255...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="bmEmail" placeholder="name@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Currency</label>
+                    <select class="form-select" id="bmCurrency">
+                        <option value="TZS">TZS - Tanzanian Shilling</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="GBP">GBP - British Pound</option>
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                    <label class="form-label">Address</label>
+                    <input type="text" class="form-input" id="bmAddress" placeholder="Office address or location">
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" id="bmNotes" rows="4" placeholder="Add any company or account notes here"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="bmStatus">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeBookmakerModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveBookmaker()"><i class="fas fa-save"></i> Save Bookmaker</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== EDIT / DEPOSIT / WITHDRAW MODAL ==================== -->
+<div class="modal-overlay" id="editBookmakerModal">
+    <div class="modal" style="max-width:720px">
+        <div class="modal-header">
+            <div class="modal-title" id="editBmTitle"><i class="fas fa-edit" style="color:var(--accent-blue);margin-right:8px"></i> Edit Bookmaker</div>
+            <button class="modal-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editBmId">
+            <div class="form-grid" style="grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
+                <div class="form-group">
+                    <label class="form-label">Bookmaker Name</label>
+                    <input type="text" class="form-input" id="editBmName">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Website URL</label>
+                    <input type="url" class="form-input" id="editBmWebsite">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Current Balance (TZS)</label>
+                    <input type="number" class="form-input" id="editBmBalance" step="0.01" min="0">
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Fill this manually; slips will not overwrite it</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Original Deposit (TZS)</label>
+                    <input type="number" class="form-input" id="editBmDeposit" step="0.01" min="0">
+                    <small class="text-muted" style="font-size:11px;margin-top:4px;display:block;">Set the original deposit amount manually here</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contact Person</label>
+                    <input type="text" class="form-input" id="editBmContactPerson">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="text" class="form-input" id="editBmPhone">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="editBmEmail">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="editBmStatus">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                    <label class="form-label">Address</label>
+                    <input type="text" class="form-input" id="editBmAddress">
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" id="editBmNotes" rows="4"></textarea>
+                </div>
+            </div>
+            
+            <!-- QUICK ACTIONS -->
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--glass-border);">
+                <h4 style="font-size:14px;margin-bottom:12px;">Quick Actions</h4>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-success" onclick="showDepositModal()"><i class="fas fa-plus"></i> Add Deposit</button>
+                    <button class="btn btn-warning" onclick="showWithdrawModal()"><i class="fas fa-minus"></i> Withdraw</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="updateBookmaker()"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== DEPOSIT MODAL ==================== -->
+<div class="modal-overlay" id="depositModal">
+    <div class="modal" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-plus-circle" style="color:var(--accent-green);margin-right:8px"></i> Add Deposit</div>
+            <button class="modal-close" onclick="closeDepositModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="depositBmId">
+            <div class="form-group">
+                <label class="form-label">Deposit Amount (TZS) *</label>
+                <input type="number" class="form-input" id="depositAmount" placeholder="e.g. 500000" min="1" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description</label>
+                <input type="text" class="form-input" id="depositDesc" placeholder="e.g. Initial deposit, Reload">
+            </div>
+            <div style="margin-top:12px;padding:12px;background:rgba(34,197,94,0.05);border-radius:8px;border:1px solid rgba(34,197,94,0.2);">
+                <div style="font-size:12px;color:var(--text-muted);">Current balance will increase by this amount. Total deposited will also be updated.</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeDepositModal()">Cancel</button>
+            <button class="btn btn-success" onclick="submitDeposit()"><i class="fas fa-check"></i> Confirm Deposit</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== WITHDRAW MODAL ==================== -->
+<div class="modal-overlay" id="withdrawModal">
+    <div class="modal" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-minus-circle" style="color:var(--accent-orange);margin-right:8px"></i> Withdraw</div>
+            <button class="modal-close" onclick="closeWithdrawModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="withdrawBmId">
+            <div class="form-group">
+                <label class="form-label">Withdrawal Amount (TZS) *</label>
+                <input type="number" class="form-input" id="withdrawAmount" placeholder="e.g. 200000" min="1" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description</label>
+                <input type="text" class="form-input" id="withdrawDesc" placeholder="e.g. Cash out, Transfer">
+            </div>
+            <div style="margin-top:12px;padding:12px;background:rgba(245,158,11,0.05);border-radius:8px;border:1px solid rgba(245,158,11,0.2);">
+                <div style="font-size:12px;color:var(--text-muted);">Current balance will decrease by this amount.</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeWithdrawModal()">Cancel</button>
+            <button class="btn btn-warning" onclick="submitWithdrawal()"><i class="fas fa-check"></i> Confirm Withdrawal</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentBookmakers = [];
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ==================== LOAD BOOKMAKERS ====================
+async function loadBookmakers() {
+    try {
+        const res = await fetch('/api/bookmakers');
+        const bms = await res.json();
+        currentBookmakers = bms;
+        
+        // Stats
+        const activeCount = bms.filter(b => b.status === 'active').length;
+        document.getElementById('activeAccounts').textContent = activeCount;
+        
+        const totalDeposited = bms.reduce((sum, b) => sum + (b.total_deposited || 0), 0);
+        const totalBalance = bms.reduce((sum, b) => sum + (b.balance || 0), 0);
+        document.getElementById('totalDeposited').textContent = formatCurrency(totalDeposited);
+        document.getElementById('totalBalance').textContent = formatCurrency(totalBalance);
+        
+        if (bms.length > 0) {
+            const sorted = [...bms].sort((a, b) => b.roi - a.roi);
+            document.getElementById('bestRoi').textContent = sorted[0].name;
+            document.getElementById('bestRoiValue').textContent = (sorted[0].roi > 0 ? '+' : '') + sorted[0].roi.toFixed(1) + '%';
+        }
+        
+        // Table
+        const tbody = document.getElementById('bookmakersTableBody');
+        if (bms.length === 0) {
+            tbody.innerHTML = `
+                <tr><td colspan="11" class="empty-state">
+                    <div style="padding:40px">
+                        <i class="fas fa-building" style="font-size:48px;margin-bottom:16px;color:var(--glass-border)"></i>
+                        <h3>No bookmakers added yet</h3>
+                        <p>Add the bookmakers you use to track your balances and deposits</p>
+                        <button class="btn btn-primary" style="margin-top:16px;" onclick="showAddBookmakerModal()">
+                            <i class="fas fa-plus"></i> Add Your First Bookmaker
+                        </button>
+                    </div>
+                </td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = bms.map(bm => {
+            const netPL = (bm.balance || 0) - (bm.total_deposited || 0) + (bm.total_withdrawn || 0);
+            const statusClass = bm.status === 'active' ? 'badge-won' : 'badge-lost';
+            const detailLines = [];
+            if (bm.contact_person) detailLines.push(`<div><i class="fas fa-user"></i> ${escapeHtml(bm.contact_person)}</div>`);
+            if (bm.phone) detailLines.push(`<div><i class="fas fa-phone"></i> ${escapeHtml(bm.phone)}</div>`);
+            if (bm.email) detailLines.push(`<div><i class="fas fa-envelope"></i> ${escapeHtml(bm.email)}</div>`);
+            if (bm.address) detailLines.push(`<div><i class="fas fa-map-marker-alt"></i> ${escapeHtml(bm.address)}</div>`);
+            if (bm.notes) detailLines.push(`<div><i class="fas fa-sticky-note"></i> ${escapeHtml(bm.notes)}</div>`);
+            const detailHtml = detailLines.length ? `<div class="text-muted" style="font-size:11px;line-height:1.5;margin-top:6px;">${detailLines.join('')}</div>` : '';
+            return `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(bm.name)}</strong>
+                    ${bm.website ? `<br><small class="text-muted"><a href="${escapeHtml(bm.website)}" target="_blank" style="color:var(--accent-blue);text-decoration:none;">${escapeHtml(bm.website)}</a></small>` : ''}
+                    ${detailHtml}
+                </td>
+                <td class="profit-display">${formatCurrency(bm.balance || 0)}</td>
+                <td class="stake-display">${formatCurrency(bm.total_deposited || 0)}</td>
+                <td class="stake-display">${formatCurrency(bm.total_withdrawn || 0)}</td>
+                <td class="profit-display ${netPL >= 0 ? 'profit-positive' : 'profit-negative'}">
+                    ${netPL >= 0 ? '+' : ''}${formatCurrency(netPL)}
+                </td>
+                <td>${bm.total_bets || 0}</td>
+                <td>${bm.total_wins || 0}</td>
+                <td>${bm.total_losses || 0}</td>
+                <td style="color:${bm.roi >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'};font-weight:700">
+                    ${bm.roi > 0 ? '+' : ''}${bm.roi.toFixed(1)}%
+                </td>
+                <td><span class="badge ${statusClass}">${bm.status}</span></td>
+                <td>
+                    <button class="btn btn-icon" style="width:32px;height:32px" onclick="openEditModal(${bm.id})" title="Edit / Deposit / Withdraw">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+        
+    } catch (err) {
+        console.error('Bookmakers load error:', err);
+        showToast('Failed to load bookmakers', 'error');
+    }
+}
+
+// ==================== ADD BOOKMAKER ====================
+function showAddBookmakerModal() {
+    document.getElementById('addBookmakerModal').classList.add('active');
+}
+
+function closeBookmakerModal() {
+    document.getElementById('addBookmakerModal').classList.remove('active');
+    document.getElementById('bmName').value = '';
+    document.getElementById('bmWebsite').value = '';
+    document.getElementById('bmBalance').value = '';
+    document.getElementById('bmDeposit').value = '';
+    document.getElementById('bmContactPerson').value = '';
+    document.getElementById('bmPhone').value = '';
+    document.getElementById('bmEmail').value = '';
+    document.getElementById('bmAddress').value = '';
+    document.getElementById('bmNotes').value = '';
+    document.getElementById('bmCurrency').value = 'TZS';
+    document.getElementById('bmStatus').value = 'active';
+}
+
+async function saveBookmaker() {
+    const name = document.getElementById('bmName').value.trim();
+    const website = document.getElementById('bmWebsite').value.trim();
+    const balance = parseFloat(document.getElementById('bmBalance').value) || 0;
+    const deposit = parseFloat(document.getElementById('bmDeposit').value) || 0;
+    const contactPerson = document.getElementById('bmContactPerson').value.trim();
+    const phone = document.getElementById('bmPhone').value.trim();
+    const email = document.getElementById('bmEmail').value.trim();
+    const address = document.getElementById('bmAddress').value.trim();
+    const notes = document.getElementById('bmNotes').value.trim();
+    const currency = document.getElementById('bmCurrency').value;
+    const status = document.getElementById('bmStatus').value;
+    
+    if (!name) {
+        showToast('Please enter a bookmaker name', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/bookmakers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                name, 
+                website, 
+                balance: balance || deposit, 
+                total_deposited: deposit,
+                contact_person: contactPerson,
+                phone,
+                email,
+                address,
+                notes,
+                currency, 
+                status 
+            })
+        });
+        
+        if (res.ok) {
+            showToast('Bookmaker added successfully!', 'success');
+            closeBookmakerModal();
+            loadBookmakers();
+            loadBookmakersSelect();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to add bookmaker', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== EDIT BOOKMAKER ====================
+function openEditModal(id) {
+    const bm = currentBookmakers.find(b => b.id === id);
+    if (!bm) return;
+    
+    document.getElementById('editBmId').value = bm.id;
+    document.getElementById('editBmName').value = bm.name;
+    document.getElementById('editBmWebsite').value = bm.website || '';
+    document.getElementById('editBmBalance').value = bm.balance || 0;
+    document.getElementById('editBmDeposit').value = bm.total_deposited || 0;
+    document.getElementById('editBmContactPerson').value = bm.contact_person || '';
+    document.getElementById('editBmPhone').value = bm.phone || '';
+    document.getElementById('editBmEmail').value = bm.email || '';
+    document.getElementById('editBmAddress').value = bm.address || '';
+    document.getElementById('editBmNotes').value = bm.notes || '';
+    document.getElementById('editBmStatus').value = bm.status;
+    document.getElementById('editBmTitle').innerHTML = `<i class="fas fa-edit" style="color:var(--accent-blue);margin-right:8px"></i> ${bm.name}`;
+    
+    document.getElementById('editBookmakerModal').classList.add('active');
+}
+
+function closeEditModal() {
+    document.getElementById('editBookmakerModal').classList.remove('active');
+}
+
+async function updateBookmaker() {
+    const id = parseInt(document.getElementById('editBmId').value);
+    const name = document.getElementById('editBmName').value.trim();
+    const website = document.getElementById('editBmWebsite').value.trim();
+    const balance = parseFloat(document.getElementById('editBmBalance').value) || 0;
+    const totalDeposited = parseFloat(document.getElementById('editBmDeposit').value) || 0;
+    const contactPerson = document.getElementById('editBmContactPerson').value.trim();
+    const phone = document.getElementById('editBmPhone').value.trim();
+    const email = document.getElementById('editBmEmail').value.trim();
+    const address = document.getElementById('editBmAddress').value.trim();
+    const notes = document.getElementById('editBmNotes').value.trim();
+    const status = document.getElementById('editBmStatus').value;
+    
+    try {
+        const res = await fetch(`/api/bookmakers/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, website, balance, total_deposited: totalDeposited, contact_person: contactPerson, phone, email, address, notes, status })
+        });
+        
+        if (res.ok) {
+            showToast('Bookmaker updated!', 'success');
+            closeEditModal();
+            loadBookmakers();
+        } else {
+            showToast('Failed to update', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== DEPOSIT ====================
+function showDepositModal() {
+    const id = document.getElementById('editBmId').value;
+    document.getElementById('depositBmId').value = id;
+    closeEditModal();
+    document.getElementById('depositModal').classList.add('active');
+}
+
+function closeDepositModal() {
+    document.getElementById('depositModal').classList.remove('active');
+    document.getElementById('depositAmount').value = '';
+    document.getElementById('depositDesc').value = '';
+}
+
+async function submitDeposit() {
+    const id = parseInt(document.getElementById('depositBmId').value);
+    const amount = parseFloat(document.getElementById('depositAmount').value);
+    const description = document.getElementById('depositDesc').value.trim() || 'Deposit';
+    
+    if (!amount || amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/bookmakers/${id}/deposit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, description })
+        });
+        
+        if (res.ok) {
+            showToast('Deposit added successfully!', 'success');
+            closeDepositModal();
+            loadBookmakers();
+            loadBankroll();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to deposit', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== WITHDRAW ====================
+function showWithdrawModal() {
+    const id = document.getElementById('editBmId').value;
+    document.getElementById('withdrawBmId').value = id;
+    closeEditModal();
+    document.getElementById('withdrawModal').classList.add('active');
+}
+
+function closeWithdrawModal() {
+    document.getElementById('withdrawModal').classList.remove('active');
+    document.getElementById('withdrawAmount').value = '';
+    document.getElementById('withdrawDesc').value = '';
+}
+
+async function submitWithdrawal() {
+    const id = parseInt(document.getElementById('withdrawBmId').value);
+    const amount = parseFloat(document.getElementById('withdrawAmount').value);
+    const description = document.getElementById('withdrawDesc').value.trim() || 'Withdrawal';
+    
+    if (!amount || amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/bookmakers/${id}/withdraw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, description })
+        });
+        
+        if (res.ok) {
+            showToast('Withdrawal processed!', 'success');
+            closeWithdrawModal();
+            loadBookmakers();
+            loadBankroll();
+        } else {
+            const data = await res.json();
+            showToast(data.error || 'Failed to withdraw', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+// ==================== MODAL CLOSE ON OUTSIDE CLICK ====================
+document.getElementById('addBookmakerModal').addEventListener('click', function(e) {
+    if(e.target === this) closeBookmakerModal();
+});
+document.getElementById('editBookmakerModal').addEventListener('click', function(e) {
+    if(e.target === this) closeEditModal();
+});
+document.getElementById('depositModal').addEventListener('click', function(e) {
+    if(e.target === this) closeDepositModal();
+});
+document.getElementById('withdrawModal').addEventListener('click', function(e) {
+    if(e.target === this) closeWithdrawModal();
+});
+
+document.addEventListener('DOMContentLoaded', loadBookmakers);
+</script>
+{% endblock %}
