@@ -857,6 +857,11 @@ def serve_upload(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory(os.path.join(app.root_path, 'static', 'js'), 'sw.js')
+
+
 @app.route('/offline.html')
 def offline_page():
     return send_from_directory(os.path.join(app.root_path, 'static'), 'offline.html')
