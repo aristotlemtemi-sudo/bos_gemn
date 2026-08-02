@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, make_response
+from flask import Flask, render_template, request, jsonify, send_from_directory, make_response, session, has_request_context
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from uuid import uuid4
 import os
 import json
 import io
+import re
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -28,6 +31,20 @@ db.init_app(app)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 
+@app.before_request
+def require_api_auth():
+    # Allow auth endpoints and static assets without session
+    allowed_prefixes = ('/auth', '/static', '/sw.js', '/manifest.json', '/offline.html')
+    for p in allowed_prefixes:
+        if request.path.startswith(p):
+            return
+
+    # Require login for all API routes
+    if request.path.startswith('/api'):
+        if not session.get('user_id'):
+            return jsonify({'error': 'authentication required'}), 401
+
+
 @app.context_processor
 def inject_globals():
     return dict(vapid_public_key=app.config.get('VAPID_PUBLIC_KEY', ''))
@@ -46,8 +63,107 @@ def get_or_create_default_user():
     return user
 
 
+@app.route('/auth/register', methods=['POST'])
+def register():
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+
+    if not username or not email or not password:
+        return jsonify({'error': 'username, email and password are required'}), 400
+
+    if User.query.filter((User.username == username) | (User.email == email)).first():
+        return jsonify({'error': 'username or email already exists'}), 400
+
+    pw_hash = generate_password_hash(password)
+    user = User(username=username, email=email, password_hash=pw_hash)
+    db.session.add(user)
+    db.session.commit()
+
+    # create default settings
+    settings = UserSettings(user_id=user.id)
+    db.session.add(settings)
+    db.session.commit()
+
+    session.permanent = True
+    session['user_id'] = user.id
+    return jsonify({'message': 'registered', 'user': user.to_dict()}), 201
+
+
+@app.route('/auth/login', methods=['POST'])
+def login():
+    data = request.get_json() or {}
+    identifier = (data.get('identifier') or '').strip()
+    password = data.get('password') or ''
+
+    if not identifier or not password:
+        return jsonify({'error': 'identifier and password required'}), 400
+
+    user = User.query.filter((User.username == identifier) | (User.email == identifier)).first()
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({'error': 'invalid credentials'}), 401
+
+    session.permanent = True
+    session['user_id'] = user.id
+    return jsonify({'message': 'logged in', 'user': user.to_dict()})
+
+
+@app.route('/auth/logout', methods=['POST'])
+def logout():
+    session.pop('user_id', None)
+    return jsonify({'message': 'logged out'})
+
+
+@app.route('/api/me')
+def me():
+    user = None
+    user_id = session.get('user_id')
+    if user_id:
+        user = User.query.get(user_id)
+    if not user:
+        return jsonify({'user': None})
+    return jsonify({'user': user.to_dict()})
+
+
+def get_session_user():
+    if has_request_context():
+        user_id = session.get('user_id')
+        if user_id:
+            user = User.query.get(user_id)
+            if user:
+                return user
+
+        user = User(
+            username=f'guest-{uuid4().hex[:8]}',
+            email=f'guest-{uuid4().hex}@bosgemn.local',
+            password_hash=uuid4().hex
+        )
+        db.session.add(user)
+        db.session.commit()
+        session.permanent = True
+        session['user_id'] = user.id
+        return user
+
+    default_user_id = app.config.get('DEFAULT_USER_ID')
+    if default_user_id:
+        user = User.query.get(default_user_id)
+        if user:
+            return user
+
+    user = User(
+        username='default-user',
+        email='default-user@bosgemn.local',
+        password_hash=uuid4().hex
+    )
+    db.session.add(user)
+    db.session.commit()
+    app.config['DEFAULT_USER_ID'] = user.id
+    return user
+
+
 def get_or_create_settings():
-    user = get_or_create_default_user()
+    user = get_session_user()
     settings = UserSettings.query.filter_by(user_id=user.id).first()
     if not settings:
         settings = UserSettings(user_id=user.id)
@@ -59,8 +175,8 @@ def get_or_create_settings():
 def get_or_create_bookmaker(name):
     if not name:
         name = 'General Bookmaker'
-    user = get_or_create_default_user()
-    bm = Bookmaker.query.filter_by(name=name).first()
+    user = get_session_user()
+    bm = Bookmaker.query.filter_by(name=name, user_id=user.id).first()
     if not bm:
         bm = Bookmaker(user_id=user.id, name=name)
         db.session.add(bm)
@@ -69,7 +185,7 @@ def get_or_create_bookmaker(name):
 
 
 def create_notification(title, message, type='info'):
-    user = get_or_create_default_user()
+    user = get_session_user()
     notif = NotificationLog(user_id=user.id, title=title, message=message, type=type)
     db.session.add(notif)
     db.session.commit()
@@ -77,13 +193,14 @@ def create_notification(title, message, type='info'):
 
 
 def check_bankroll_alerts():
+    user = get_session_user()
     settings = get_or_create_settings()
     if not settings.bankroll_alerts:
         return
 
-    total_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).scalar() or 0
-    total_balance = db.session.query(db.func.sum(Bookmaker.balance)).scalar() or 0
-    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending').scalar() or 0
+    total_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    total_balance = db.session.query(db.func.sum(Bookmaker.balance)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending', BetSlip.user_id == user.id).scalar() or 0
 
     if total_deposited > 0:
         available_pct = ((total_balance - at_stake) / total_deposited) * 100
@@ -136,13 +253,15 @@ def settings():
 
 @app.route('/api/notifications', methods=['GET'])
 def get_notifications():
-    notifs = NotificationLog.query.order_by(NotificationLog.created_at.desc()).limit(20).all()
+    user = get_session_user()
+    notifs = NotificationLog.query.filter_by(user_id=user.id).order_by(NotificationLog.created_at.desc()).limit(20).all()
     return jsonify([n.to_dict() for n in notifs])
 
 
 @app.route('/api/notifications/<int:id>/read', methods=['PUT'])
 def mark_notification_read(id):
-    notif = NotificationLog.query.get_or_404(id)
+    user = get_session_user()
+    notif = NotificationLog.query.filter_by(id=id, user_id=user.id).first_or_404()
     notif.is_read = True
     db.session.commit()
     return jsonify(notif.to_dict())
@@ -150,30 +269,31 @@ def mark_notification_read(id):
 
 @app.route('/api/dashboard/stats')
 def dashboard_stats():
-    total_slips = BetSlip.query.count()
-    won_slips = BetSlip.query.filter_by(status='won').count()
-    lost_slips = BetSlip.query.filter_by(status='lost').count()
-    pending_slips = BetSlip.query.filter_by(status='pending').count()
+    user = get_session_user()
+    total_slips = BetSlip.query.filter_by(user_id=user.id).count()
+    won_slips = BetSlip.query.filter_by(user_id=user.id, status='won').count()
+    lost_slips = BetSlip.query.filter_by(user_id=user.id, status='lost').count()
+    pending_slips = BetSlip.query.filter_by(user_id=user.id, status='pending').count()
 
-    total_staked = db.session.query(db.func.sum(BetSlip.stake)).scalar() or 0
-    total_profit = db.session.query(db.func.sum(BetSlip.profit_loss)).scalar() or 0
+    total_staked = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.user_id == user.id).scalar() or 0
+    total_profit = db.session.query(db.func.sum(BetSlip.profit_loss)).filter(BetSlip.user_id == user.id).scalar() or 0
 
     today = datetime.now().date()
     today_start = datetime.combine(today, datetime.min.time())
     today_end = datetime.combine(today, datetime.max.time())
-    today_slips = BetSlip.query.filter(BetSlip.created_at >= today_start, BetSlip.created_at <= today_end).all()
+    today_slips = BetSlip.query.filter(BetSlip.user_id == user.id, BetSlip.created_at >= today_start, BetSlip.created_at <= today_end).all()
     today_profit = sum(s.profit_loss for s in today_slips if s.status != 'pending')
     today_bets = len(today_slips)
 
     roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
     strike_rate = (won_slips / (won_slips + lost_slips) * 100) if (won_slips + lost_slips) > 0 else 0
 
-    total_balance = db.session.query(db.func.sum(Bookmaker.balance)).scalar() or 0
-    total_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).scalar() or 0
-    bookmaker_count = Bookmaker.query.count()
-    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending').scalar() or 0
+    total_balance = db.session.query(db.func.sum(Bookmaker.balance)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    total_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    bookmaker_count = Bookmaker.query.filter_by(user_id=user.id).count()
+    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending', BetSlip.user_id == user.id).scalar() or 0
 
-    recent_slips = BetSlip.query.filter(BetSlip.status.in_(['won', 'lost'])).order_by(BetSlip.settled_at.desc()).limit(10).all()
+    recent_slips = BetSlip.query.filter(BetSlip.user_id == user.id, BetSlip.status.in_(['won', 'lost'])).order_by(BetSlip.settled_at.desc()).limit(10).all()
     streak = 0
     streak_type = None
     for slip in recent_slips:
@@ -185,8 +305,8 @@ def dashboard_stats():
         else:
             break
 
-    avg_odds = db.session.query(db.func.avg(BetSlip.odds)).scalar() or 0
-    avg_stake = db.session.query(db.func.avg(BetSlip.stake)).scalar() or 0
+    avg_odds = db.session.query(db.func.avg(BetSlip.odds)).filter(BetSlip.user_id == user.id).scalar() or 0
+    avg_stake = db.session.query(db.func.avg(BetSlip.stake)).filter(BetSlip.user_id == user.id).scalar() or 0
 
     settings = get_or_create_settings()
     margin_alert = None
@@ -268,11 +388,12 @@ def profit_chart():
 
 @app.route('/api/slips', methods=['GET'])
 def get_slips():
+    user = get_session_user()
     status = request.args.get('status')
     sport = request.args.get('sport')
     search = request.args.get('search', '')
 
-    query = BetSlip.query
+    query = BetSlip.query.filter_by(user_id=user.id)
 
     if status and status != 'all':
         query = query.filter_by(status=status)
@@ -298,10 +419,15 @@ def create_slip():
     data = request.form.to_dict() if request.form else (request.get_json() or {})
 
     screenshot_path = ''
+    screenshot_name = data.get('screenshot_name', '').strip() or ''
     if 'screenshot' in request.files:
         file = request.files['screenshot']
         if file and allowed_file(file.filename):
-            filename = secure_filename(f"slip_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
+            base_name = secure_filename((screenshot_name or 'screenshot').strip() or 'screenshot').lower()
+            base_name = re.sub(r'[^a-z0-9]+', '_', base_name).strip('_') or 'screenshot'
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            ext = os.path.splitext(file.filename)[1].lower() or '.jpg'
+            filename = f"slip_{base_name}_{timestamp}{ext}"
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             screenshot_path = f'/static/uploads/{filename}'
 
@@ -344,12 +470,12 @@ def create_slip():
             combined *= safe_float(m.get('odds'), 1.0)
         odds_val = round(combined, 2)
 
-    user = get_or_create_default_user()
+    user = get_session_user()
 
     slip = BetSlip(
         user_id=user.id,
         slip_name=data.get('slip_name', 'Slip #1') or 'Slip #1',
-        slip_number=data.get('slip_number', f"SLIP-{BetSlip.query.count() + 1:03d}") or f"SLIP-{BetSlip.query.count() + 1:03d}",
+        slip_number=data.get('slip_number', f"SLIP-{BetSlip.query.filter_by(user_id=user.id).count() + 1:03d}") or f"SLIP-{BetSlip.query.filter_by(user_id=user.id).count() + 1:03d}",
         home_team=data.get('home_team', '') or '',
         away_team=data.get('away_team', '') or '',
         league=data.get('league', '') or '',
@@ -365,6 +491,7 @@ def create_slip():
         reasoning=data.get('reasoning', '') or '',
         notes=data.get('notes', '') or '',
         screenshot_path=screenshot_path,
+        screenshot_name=screenshot_name,
         strategy_tag=data.get('strategy_tag', '') or '',
         match_datetime=match_datetime
     )
@@ -405,7 +532,8 @@ def create_slip():
 
 @app.route('/api/slips/<int:id>', methods=['PUT'])
 def update_slip(id):
-    slip = BetSlip.query.get_or_404(id)
+    user = get_session_user()
+    slip = BetSlip.query.filter_by(id=id, user_id=user.id).first_or_404()
     data = request.get_json() or {}
 
     old_status = slip.status
@@ -447,7 +575,8 @@ def update_slip(id):
 
 @app.route('/api/slips/<int:id>', methods=['DELETE'])
 def delete_slip(id):
-    slip = BetSlip.query.get_or_404(id)
+    user = get_session_user()
+    slip = BetSlip.query.filter_by(id=id, user_id=user.id).first_or_404()
     bm_id = slip.bookmaker_id
     db.session.delete(slip)
     db.session.commit()
@@ -484,10 +613,11 @@ def update_bookmaker_stats(bookmaker_id):
 
 @app.route('/api/analytics/by-sport')
 def analytics_by_sport():
-    sports = db.session.query(BetSlip.sport).distinct().all()
+    user = get_session_user()
+    sports = db.session.query(BetSlip.sport).filter(BetSlip.user_id == user.id).distinct().all()
     result = []
     for (sport,) in sports:
-        slips = BetSlip.query.filter_by(sport=sport).all()
+        slips = BetSlip.query.filter_by(user_id=user.id, sport=sport).all()
         total_staked = sum(s.stake for s in slips)
         total_profit = sum(s.profit_loss for s in slips)
         roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
@@ -503,10 +633,11 @@ def analytics_by_sport():
 
 @app.route('/api/analytics/by-market')
 def analytics_by_market():
-    markets = db.session.query(BetSlip.market).distinct().all()
+    user = get_session_user()
+    markets = db.session.query(BetSlip.market).filter(BetSlip.user_id == user.id).distinct().all()
     result = []
     for (market,) in markets:
-        slips = BetSlip.query.filter_by(market=market).all()
+        slips = BetSlip.query.filter_by(user_id=user.id, market=market).all()
         total_staked = sum(s.stake for s in slips)
         total_profit = sum(s.profit_loss for s in slips)
         roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
@@ -521,7 +652,8 @@ def analytics_by_market():
 
 @app.route('/api/analytics/by-bookmaker')
 def analytics_by_bookmaker():
-    bookmakers = Bookmaker.query.all()
+    user = get_session_user()
+    bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
     return jsonify([{
         'name': bm.name,
         'roi': round(bm.roi, 1),
@@ -533,6 +665,7 @@ def analytics_by_bookmaker():
 
 @app.route('/api/analytics/by-odds-range')
 def analytics_by_odds():
+    user = get_session_user()
     ranges = [
         ('1.01 - 1.50', 1.01, 1.50),
         ('1.51 - 2.00', 1.51, 2.00),
@@ -541,7 +674,7 @@ def analytics_by_odds():
     ]
     result = []
     for name, low, high in ranges:
-        slips = BetSlip.query.filter(BetSlip.odds >= low, BetSlip.odds < high).all()
+        slips = BetSlip.query.filter(BetSlip.user_id == user.id, BetSlip.odds >= low, BetSlip.odds < high).all()
         total_staked = sum(s.stake for s in slips)
         total_profit = sum(s.profit_loss for s in slips)
         roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
@@ -556,10 +689,11 @@ def analytics_by_odds():
 
 @app.route('/api/analytics/by-strategy')
 def analytics_by_strategy():
-    strategies = db.session.query(BetSlip.strategy_tag).filter(BetSlip.strategy_tag != '').distinct().all()
+    user = get_session_user()
+    strategies = db.session.query(BetSlip.strategy_tag).filter(BetSlip.user_id == user.id, BetSlip.strategy_tag != '').distinct().all()
     result = []
     for (strategy,) in strategies:
-        slips = BetSlip.query.filter_by(strategy_tag=strategy).all()
+        slips = BetSlip.query.filter_by(user_id=user.id, strategy_tag=strategy).all()
         total_staked = sum(s.stake for s in slips)
         total_profit = sum(s.profit_loss for s in slips)
         roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
@@ -574,6 +708,7 @@ def analytics_by_strategy():
 
 @app.route('/api/analytics/monthly')
 def analytics_monthly():
+    user = get_session_user()
     months = []
     profits = []
     now = datetime.now()
@@ -594,6 +729,7 @@ def analytics_monthly():
         month_end = next_month_start - timedelta(seconds=1)
 
         slips = BetSlip.query.filter(
+            BetSlip.user_id == user.id,
             BetSlip.settled_at >= month_start,
             BetSlip.settled_at <= month_end
         ).all()
@@ -607,14 +743,15 @@ def analytics_monthly():
 
 @app.route('/api/bookmakers', methods=['GET'])
 def get_bookmakers():
-    bookmakers = Bookmaker.query.all()
+    user = get_session_user()
+    bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
     return jsonify([bm.to_dict() for bm in bookmakers])
 
 
 @app.route('/api/bookmakers', methods=['POST'])
 def create_bookmaker():
     data = request.get_json() or {}
-    user = get_or_create_default_user()
+    user = get_session_user()
     bm = Bookmaker(
         user_id=user.id,
         name=data.get('name', 'Bookmaker') or 'Bookmaker',
@@ -636,7 +773,8 @@ def create_bookmaker():
 
 @app.route('/api/bookmakers/<int:id>', methods=['PUT'])
 def update_bookmaker(id):
-    bm = Bookmaker.query.get_or_404(id)
+    user = get_session_user()
+    bm = Bookmaker.query.filter_by(id=id, user_id=user.id).first_or_404()
     data = request.get_json() or {}
     for key, value in data.items():
         if hasattr(bm, key):
@@ -675,7 +813,8 @@ def update_manual_bankroll_summary():
 
 @app.route('/api/bookmakers/<int:id>/deposit', methods=['POST'])
 def deposit_to_bookmaker(id):
-    bm = Bookmaker.query.get_or_404(id)
+    user = get_session_user()
+    bm = Bookmaker.query.filter_by(id=id, user_id=user.id).first_or_404()
     data = request.get_json() or {}
     amount = float(data.get('amount', 0) or 0)
 
@@ -683,7 +822,6 @@ def deposit_to_bookmaker(id):
     bm.balance += amount
     db.session.commit()
 
-    user = get_or_create_default_user()
     txn = BankrollTransaction(
         user_id=user.id,
         type='deposit',
@@ -700,7 +838,8 @@ def deposit_to_bookmaker(id):
 
 @app.route('/api/bookmakers/<int:id>/withdraw', methods=['POST'])
 def withdraw_from_bookmaker(id):
-    bm = Bookmaker.query.get_or_404(id)
+    user = get_session_user()
+    bm = Bookmaker.query.filter_by(id=id, user_id=user.id).first_or_404()
     data = request.get_json() or {}
     amount = float(data.get('amount', 0) or 0)
 
@@ -711,7 +850,6 @@ def withdraw_from_bookmaker(id):
     bm.balance -= amount
     db.session.commit()
 
-    user = get_or_create_default_user()
     txn = BankrollTransaction(
         user_id=user.id,
         type='withdrawal',
@@ -728,14 +866,15 @@ def withdraw_from_bookmaker(id):
 
 @app.route('/api/bankroll/stats')
 def bankroll_stats():
+    user = get_session_user()
     settings = get_or_create_settings()
-    total_balance = settings.manual_total_balance if settings.manual_total_balance else (db.session.query(db.func.sum(Bookmaker.balance)).scalar() or 0)
-    total_deposited = settings.manual_total_deposited if settings.manual_total_deposited else (db.session.query(db.func.sum(Bookmaker.total_deposited)).scalar() or 0)
-    total_withdrawn = db.session.query(db.func.sum(Bookmaker.total_withdrawn)).scalar() or 0
-    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending').scalar() or 0
+    total_balance = settings.manual_total_balance if settings.manual_total_balance else (db.session.query(db.func.sum(Bookmaker.balance)).filter(Bookmaker.user_id == user.id).scalar() or 0)
+    total_deposited = settings.manual_total_deposited if settings.manual_total_deposited else (db.session.query(db.func.sum(Bookmaker.total_deposited)).filter(Bookmaker.user_id == user.id).scalar() or 0)
+    total_withdrawn = db.session.query(db.func.sum(Bookmaker.total_withdrawn)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending', BetSlip.user_id == user.id).scalar() or 0
     available = total_balance - at_stake
 
-    all_profit = db.session.query(db.func.sum(BetSlip.profit_loss)).scalar() or 0
+    all_profit = db.session.query(db.func.sum(BetSlip.profit_loss)).filter(BetSlip.user_id == user.id).scalar() or 0
 
     red_triggered = False
     yellow_triggered = False
@@ -763,6 +902,7 @@ def bankroll_stats():
 
 @app.route('/api/bankroll/history')
 def bankroll_history():
+    user = get_session_user()
     days = int(request.args.get('days', 30))
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days - 1)
@@ -771,14 +911,15 @@ def bankroll_history():
     balance_data = []
     deposited_data = []
 
-    current_balance = db.session.query(db.func.sum(Bookmaker.balance)).scalar() or 0
-    current_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).scalar() or 0
+    current_balance = db.session.query(db.func.sum(Bookmaker.balance)).filter(Bookmaker.user_id == user.id).scalar() or 0
+    current_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).filter(Bookmaker.user_id == user.id).scalar() or 0
 
     for i in range(days):
         date = start_date + timedelta(days=i)
         labels.append(date.strftime('%d %b'))
         date_end = datetime.combine(date.date(), datetime.max.time())
         slips_up_to_date = BetSlip.query.filter(
+            BetSlip.user_id == user.id,
             BetSlip.settled_at != None,
             BetSlip.settled_at <= date_end,
             BetSlip.status.in_(['won', 'lost', 'cashed'])
@@ -796,7 +937,8 @@ def bankroll_history():
 
 @app.route('/api/bankroll/transactions')
 def get_transactions():
-    txns = BankrollTransaction.query.order_by(BankrollTransaction.created_at.desc()).limit(50).all()
+    user = get_session_user()
+    txns = BankrollTransaction.query.filter_by(user_id=user.id).order_by(BankrollTransaction.created_at.desc()).limit(50).all()
     return jsonify([t.to_dict() for t in txns])
 
 
@@ -810,7 +952,7 @@ def push_subscribe():
     if not endpoint or not p256dh or not auth:
         return jsonify({'error': 'Invalid subscription payload'}), 400
 
-    user = get_or_create_default_user()
+    user = get_session_user()
     sub = PushSubscription.query.filter_by(user_id=user.id, endpoint=endpoint).first()
     if not sub:
         sub = PushSubscription(user_id=user.id, endpoint=endpoint, p256dh=p256dh, auth=auth)
@@ -839,13 +981,14 @@ def update_settings():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
+    user = get_session_user()
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     if file and allowed_file(file.filename):
-        filename = secure_filename(f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
+        filename = secure_filename(f"user_{user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         return jsonify({'path': f'/static/uploads/{filename}', 'filename': filename})
@@ -880,7 +1023,8 @@ def generate_pdf_report():
     currency = settings.pdf_currency or 'TZS'
     company_name = settings.pdf_company_name or 'BOS GEMN'
 
-    query = BetSlip.query
+    user = get_session_user()
+    query = BetSlip.query.filter_by(user_id=user.id)
 
     if period == 'today':
         today = datetime.now().date()
@@ -903,7 +1047,8 @@ def generate_pdf_report():
             pass
 
     slips = query.order_by(BetSlip.created_at.desc()).all()
-    bookmakers = Bookmaker.query.all()
+    user = get_session_user()
+    bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.4 * inch, bottomMargin=0.4 * inch, leftMargin=0.4 * inch, rightMargin=0.4 * inch)
@@ -1199,6 +1344,8 @@ def initialize_database():
             db.session.execute(db.text('ALTER TABLE user_settings ADD COLUMN manual_total_balance FLOAT DEFAULT 0'))
         if 'manual_total_deposited' not in existing_columns:
             db.session.execute(db.text('ALTER TABLE user_settings ADD COLUMN manual_total_deposited FLOAT DEFAULT 0'))
+        if 'screenshot_name' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
+            db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN screenshot_name VARCHAR(200) DEFAULT ""'))
         db.session.commit()
 
 

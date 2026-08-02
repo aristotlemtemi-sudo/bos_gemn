@@ -297,6 +297,7 @@ html[data-theme="light"] .modal{background:#ffffff}
             <button class="btn-theme" id="themeToggle" title="Toggle Dark Mode" onclick="toggleTheme()">
                 <span class="theme-icon" id="themeIcon">🌙</span>
             </button>
+            <button class="btn" id="authBtn" onclick="openAuthModal()">Log in</button>
         </div>
     </div>
 
@@ -326,6 +327,24 @@ html[data-theme="light"] .modal{background:#ffffff}
 <button class="tab active" onclick="switchModalTab(this,'manual')">Manual Entry</button>
 <button class="tab" onclick="switchModalTab(this,'paste')">Paste Text</button>
 <button class="tab" onclick="switchModalTab(this,'screenshot')">Screenshot (OCR)</button>
+</div>
+<div class="form-grid" style="margin-bottom:16px;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+    <div class="form-group">
+        <label class="form-label">Slip Name</label>
+        <input type="text" id="globalSlipName" class="form-input" placeholder="e.g. Weekend Acca" value="">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Bookmaker</label>
+        <select class="form-select" id="globalBookmakerSelect"></select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Total Stake (TZS)</label>
+        <input type="number" id="globalStake" class="form-input" placeholder="e.g. 50000" min="100">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Total Odds</label>
+        <input type="number" id="globalOdds" class="form-input" placeholder="e.g. 2.35" step="0.01" min="1.01">
+    </div>
 </div>
 <form id="betForm" enctype="multipart/form-data">
 <div id="manualForm">
@@ -368,6 +387,10 @@ html[data-theme="light"] .modal{background:#ffffff}
 <p><strong>Click to upload screenshot</strong><br>or drag and drop here<br><span style="color:var(--text-muted);font-size:12px">Supports JPG, PNG, WEBP</span></p>
 <input type="file" name="screenshot" id="screenshotInput" style="display:none" accept="image/*" onchange="handleFileSelect(this)">
 </div>
+<div class="form-group" style="margin-top:12px;">
+    <label class="form-label">Screenshot Name</label>
+    <input type="text" id="screenshotName" class="form-input" placeholder="e.g. Bet365 screenshot" value="">
+</div>
 <div id="screenshotPreview" style="margin-top:16px;display:none">
 <img id="previewImg" style="max-width:100%;border-radius:8px;border:1px solid var(--glass-border)">
 </div>
@@ -382,6 +405,31 @@ html[data-theme="light"] .modal{background:#ffffff}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Auth Modal -->
+<div class="modal-overlay" id="authModal">
+    <div class="modal">
+        <div class="modal-header"><div class="modal-title">Account</div><button class="modal-close" onclick="closeAuthModal()"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body">
+            <div style="display:flex;gap:12px;margin-bottom:12px">
+                <button class="btn" id="tabLogin" onclick="showAuthTab('login')">Login</button>
+                <button class="btn" id="tabRegister" onclick="showAuthTab('register')">Register</button>
+            </div>
+            <div id="authLogin">
+                <div class="form-group"><label class="form-label">Username or Email</label><input id="loginIdentifier" class="form-input" placeholder="username or email"></div>
+                <div class="form-group"><label class="form-label">Password</label><input id="loginPassword" type="password" class="form-input" placeholder="password"></div>
+                <div style="margin-top:12px"><button class="btn btn-primary" onclick="login()">Log in</button></div>
+            </div>
+            <div id="authRegister" style="display:none">
+                <div class="form-group"><label class="form-label">Username</label><input id="regUsername" class="form-input" placeholder="username"></div>
+                <div class="form-group"><label class="form-label">Email</label><input id="regEmail" class="form-input" placeholder="email"></div>
+                <div class="form-group"><label class="form-label">Password</label><input id="regPassword" type="password" class="form-input" placeholder="password"></div>
+                <div style="margin-top:12px"><button class="btn btn-primary" onclick="registerUser()">Create account</button></div>
+            </div>
+            <div id="authMessage" style="margin-top:12px;color:var(--accent-red)"></div>
+        </div>
+    </div>
+</div>
 
 <script>
 const API_BASE = '';
@@ -494,7 +542,7 @@ async function requestPushPermission() {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
         // Register service worker
-        const reg = await navigator.serviceWorker.register('/static/js/sw.js');
+        const reg = await navigator.serviceWorker.register('/sw.js');
         const sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array('{{ vapid_public_key }}')
@@ -592,6 +640,12 @@ function addMatchRow() {
 async function saveBet() {
     const form = document.getElementById('betForm');
     if (!form) return;
+
+    const slipName = document.getElementById('globalSlipName').value.trim();
+    const bookmaker = document.getElementById('globalBookmakerSelect').value;
+    const stake = document.getElementById('globalStake').value;
+    const odds = document.getElementById('globalOdds').value;
+    const screenshotName = document.getElementById('screenshotName').value.trim();
     
     // Collect matches
     const matches = [];
@@ -606,6 +660,11 @@ async function saveBet() {
     
     const formData = new FormData(form);
     formData.append('matches', JSON.stringify(matches));
+    formData.set('slip_name', slipName || formData.get('slip_name') || '');
+    formData.set('bookmaker', bookmaker || formData.get('bookmaker') || '');
+    formData.set('stake', stake || formData.get('stake') || '');
+    formData.set('odds', odds || formData.get('odds') || '');
+    formData.set('screenshot_name', screenshotName || '');
     
     if (!formData.get('match_datetime')) {
         formData.set('match_datetime', new Date().toISOString().slice(0, 16));
@@ -642,10 +701,11 @@ async function loadBookmakersSelect() {
         const res = await fetch('/api/bookmakers');
         const bms = await res.json();
         const select = document.getElementById('modalBookmakerSelect');
-        if (select) {
-            const options = bms.map(bm => `<option value="${bm.name}">${bm.name} (${formatCurrency(bm.balance, 'TZS')})</option>`).join('');
-            select.innerHTML = options + '<option value="">Other</option>';
-        }
+        const globalSelect = document.getElementById('globalBookmakerSelect');
+        const options = bms.map(bm => `<option value="${bm.name}">${bm.name} (${formatCurrency(bm.balance, 'TZS')})</option>`).join('');
+        const fullOptions = options + '<option value="">Other</option>';
+        if (select) select.innerHTML = fullOptions;
+        if (globalSelect) globalSelect.innerHTML = fullOptions;
     } catch (e) {}
 }
 
@@ -735,7 +795,60 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === this) closeModal();
         });
     }
+
+    // Auth modal handlers
+    const authModal = document.getElementById('authModal');
+    if (authModal) {
+        authModal.addEventListener('click', (e) => { if (e.target === authModal) closeAuthModal(); });
+    }
 });
+
+// Auth modal functions
+function openAuthModal() { document.getElementById('authModal').classList.add('active'); }
+function closeAuthModal() { document.getElementById('authModal').classList.remove('active'); }
+function showAuthTab(tab) {
+    document.getElementById('authMessage').textContent = '';
+    if (tab === 'login') { document.getElementById('authLogin').style.display = 'block'; document.getElementById('authRegister').style.display = 'none'; }
+    else { document.getElementById('authLogin').style.display = 'none'; document.getElementById('authRegister').style.display = 'block'; }
+}
+
+async function registerUser() {
+    const username = document.getElementById('regUsername').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const msg = document.getElementById('authMessage');
+    msg.textContent = '';
+    try {
+        const res = await fetch('/auth/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,email,password})});
+        const data = await res.json();
+        if (res.ok) { closeAuthModal(); location.reload(); } else { msg.textContent = data.error || 'Registration failed'; }
+    } catch (e) { msg.textContent = 'Network error'; }
+}
+
+async function login() {
+    const identifier = document.getElementById('loginIdentifier').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const msg = document.getElementById('authMessage');
+    msg.textContent = '';
+    try {
+        const res = await fetch('/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier,password})});
+        const data = await res.json();
+        if (res.ok) { closeAuthModal(); location.reload(); } else { msg.textContent = data.error || 'Login failed'; }
+    } catch (e) { msg.textContent = 'Network error'; }
+}
+
+// Update auth button based on session
+async function refreshAuthButton() {
+    try {
+        const res = await fetch('/api/me');
+        const data = await res.json();
+        const btn = document.getElementById('authBtn');
+        if (data.user && btn) { btn.textContent = 'Logout'; btn.onclick = async () => { await fetch('/auth/logout', {method:'POST'}); location.reload(); }; }
+        else if (btn) { btn.textContent = 'Log in'; btn.onclick = openAuthModal; }
+    } catch (e) {}
+}
+
+refreshAuthButton();
 
 </script>
 {% block extra_js %}{% endblock %}

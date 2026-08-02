@@ -104,6 +104,7 @@ class BetSlip(db.Model):
     reasoning = db.Column(db.Text, default='')
     notes = db.Column(db.Text, default='')
     screenshot_path = db.Column(db.String(255), default='')
+    screenshot_name = db.Column(db.String(200), default='')
     strategy_tag = db.Column(db.String(100), default='')
     
     # Timestamps
@@ -165,6 +166,7 @@ class BetSlip(db.Model):
             'reasoning': self.reasoning,
             'notes': self.notes,
             'screenshot_path': self.screenshot_path,
+            'screenshot_name': self.screenshot_name,
             'strategy_tag': self.strategy_tag,
             'match_datetime': self.match_datetime.isoformat() if self.match_datetime else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,

@@ -11,6 +11,10 @@ class Config:
     PERMANENT_SESSION_LIFETIME = timedelta(days=7)
     DEFAULT_CURRENCY = 'TZS'
     DEFAULT_TIMEZONE = 'UTC+3'
+    # Session cookie security
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
     
     # =========================================================================
     # NEW: Push Notification Settings (Web Push for real device notifications)

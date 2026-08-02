@@ -353,7 +353,7 @@ async function requestPushPermission() {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
         try {
-            const reg = await navigator.serviceWorker.register('/static/js/sw.js');
+            const reg = await navigator.serviceWorker.register('/sw.js');
             const sub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array('{{ vapid_public_key }}')
