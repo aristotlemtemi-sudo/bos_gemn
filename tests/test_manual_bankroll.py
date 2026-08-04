@@ -64,3 +64,19 @@ def test_screenshot_upload_uses_clear_name_and_saves_metadata(test_app):
         saved_path = data['screenshot_path'].replace('/static/uploads/', '', 1)
         assert os.path.exists(os.path.join(temp_dir, saved_path))
         assert 'weekend_screenshot' in saved_path.lower()
+
+
+def test_slip_to_dict_uses_combined_odds_from_matches_when_total_odds_is_missing(test_app):
+    with app.app_context():
+        slip = BetSlip(stake=100.0, odds=1.0)
+        slip.set_matches([
+            {'event': 'Team A vs Team B', 'selection': 'Home Win', 'odds': 1.8},
+            {'event': 'Team C vs Team D', 'selection': 'Draw', 'odds': 2.0}
+        ])
+        db.session.add(slip)
+        db.session.commit()
+
+        payload = slip.to_dict()
+
+        assert payload['odds'] == 3.6
+        assert payload['potential_return'] == 360.0

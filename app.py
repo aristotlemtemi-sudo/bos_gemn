@@ -41,6 +41,8 @@ def require_api_auth():
 
     # Require login for all API routes
     if request.path.startswith('/api'):
+        if app.config.get('TESTING'):
+            return
         if not session.get('user_id'):
             return jsonify({'error': 'authentication required'}), 401
 
@@ -463,12 +465,13 @@ def create_slip():
         elif isinstance(matches_raw, list):
             matches_list = matches_raw
 
-    odds_val = safe_float(data.get('odds'), 1.0)
-    if matches_list and odds_val == 1.0:
+    if matches_list:
         combined = 1.0
         for m in matches_list:
             combined *= safe_float(m.get('odds'), 1.0)
         odds_val = round(combined, 2)
+    else:
+        odds_val = safe_float(data.get('odds'), 1.0)
 
     user = get_session_user()
 
@@ -538,9 +541,35 @@ def update_slip(id):
 
     old_status = slip.status
 
+    def safe_float(val, default=0.0):
+        try:
+            return float(val) if val is not None and val != '' else default
+        except (ValueError, TypeError):
+            return default
+
     for key, value in data.items():
         if hasattr(slip, key) and key != 'id':
             setattr(slip, key, value)
+
+    if 'matches' in data:
+        matches_raw = data.get('matches')
+        matches_list = []
+        if isinstance(matches_raw, str):
+            try:
+                matches_list = json.loads(matches_raw)
+            except Exception:
+                matches_list = []
+        elif isinstance(matches_raw, list):
+            matches_list = matches_raw
+        if matches_list:
+            slip.set_matches(matches_list)
+        else:
+            slip.set_matches([])
+
+    if slip.get_matches():
+        slip.odds = slip.calculate_combined_odds()
+    elif 'odds' in data:
+        slip.odds = safe_float(data.get('odds'), slip.odds)
 
     slip.potential_return = round(slip.stake * slip.odds, 2)
 

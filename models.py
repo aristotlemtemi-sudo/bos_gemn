@@ -139,6 +139,7 @@ class BetSlip(db.Model):
 
     def to_dict(self):
         matches = self.get_matches()
+        effective_odds = self.calculate_combined_odds() if matches else (self.odds or 1.0)
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -154,9 +155,9 @@ class BetSlip(db.Model):
             'sport': self.sport,
             'market': self.market,
             'prediction': self.prediction,
-            'odds': self.odds,
+            'odds': effective_odds,
             'stake': self.stake,
-            'potential_return': round(self.stake * self.odds, 2),
+            'potential_return': round(self.stake * effective_odds, 2),
             'profit_loss': self.profit_loss,
             'return_amount': self.return_amount,
             'status': self.status,

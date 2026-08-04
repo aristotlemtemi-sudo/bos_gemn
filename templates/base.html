@@ -631,9 +631,28 @@ function addMatchRow() {
         <input type="text" class="form-input match-event" placeholder="Event (e.g. Man Utd vs Liverpool)">
         <input type="text" class="form-input match-selection" placeholder="Selection (e.g. Over 2.5)">
         <input type="number" class="form-input match-odds" placeholder="Odds" step="0.01" min="1.01">
-        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()" style="padding:4px 8px;">×</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove(); syncGlobalSlipTotals();" style="padding:4px 8px;">×</button>
     `;
     container.appendChild(row);
+}
+
+function syncGlobalSlipTotals() {
+    const oddsInput = document.getElementById('globalOdds');
+    if (!oddsInput) return;
+
+    let totalOdds = 1.0;
+    let hasOdds = false;
+    document.querySelectorAll('.match-row').forEach(row => {
+        const oddsValue = parseFloat(row.querySelector('.match-odds')?.value);
+        if (!Number.isNaN(oddsValue) && oddsValue > 0) {
+            totalOdds *= oddsValue;
+            hasOdds = true;
+        }
+    });
+
+    if (hasOdds) {
+        oddsInput.value = totalOdds.toFixed(2);
+    }
 }
 
 // ==================== SAVE BET (WITH MATCHES) ====================
@@ -663,7 +682,7 @@ async function saveBet() {
     formData.set('slip_name', slipName || formData.get('slip_name') || '');
     formData.set('bookmaker', bookmaker || formData.get('bookmaker') || '');
     formData.set('stake', stake || formData.get('stake') || '');
-    formData.set('odds', odds || formData.get('odds') || '');
+    formData.set('odds', matches.length > 0 ? (matches.reduce((acc, match) => acc * (parseFloat(match.odds) || 1), 1).toFixed(2)) : (odds || formData.get('odds') || ''));
     formData.set('screenshot_name', screenshotName || '');
     
     if (!formData.get('match_datetime')) {
@@ -722,6 +741,18 @@ function parseMatches(matchesData) {
     }
     return [];
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const matchesContainer = document.getElementById('matchesContainer');
+    if (matchesContainer) {
+        matchesContainer.addEventListener('input', function(event) {
+            if (event.target.classList.contains('match-odds')) {
+                syncGlobalSlipTotals();
+            }
+        });
+    }
+    syncGlobalSlipTotals();
+});
 
 // ==================== CURRENCY FORMATTING ====================
 function formatCurrency(amount, currency) {
