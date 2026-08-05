@@ -52,9 +52,6 @@
             <button class="btn" onclick="window.print()">
                 <i class="fas fa-print"></i> Print Page
             </button>
-            <button class="btn" onclick="exportJSON()">
-                <i class="fas fa-file-code"></i> Export JSON Data
-            </button>
         </div>
     </div>
 
@@ -217,9 +214,8 @@ async function loadAllData() {
         currentSlips = await slipsRes.json();
         currentBookmakers = await bmRes.json();
         
-        // Default: show all
+        // Default: show all registered bookmakers only
         generateReport('all');
-        loadMonthlyChart();
         loadBookmakerReport();
         
     } catch (err) {
@@ -236,11 +232,15 @@ async function generateReport(period) {
     const now = new Date();
     let filtered = [...currentSlips];
     let title = '';
+    const registeredNames = currentBookmakers.length ? currentBookmakers.map(bm => bm.name) : [];
+    if (registeredNames.length > 0) {
+        filtered = filtered.filter(s => registeredNames.includes(s.bookmaker_name));
+    }
     
     switch(period) {
         case 'today':
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            filtered = currentSlips.filter(s => {
+            filtered = filtered.filter(s => {
                 const d = new Date(s.created_at || s.match_datetime);
                 return d >= todayStart;
             });
@@ -248,17 +248,17 @@ async function generateReport(period) {
             break;
         case 'week':
             const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= weekAgo);
+            filtered = filtered.filter(s => new Date(s.created_at || s.match_datetime) >= weekAgo);
             title = "This Week's Report";
             break;
         case 'month':
             const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= monthAgo);
+            filtered = filtered.filter(s => new Date(s.created_at || s.match_datetime) >= monthAgo);
             title = "This Month's Report";
             break;
         case 'year':
             const yearStart = new Date(now.getFullYear(), 0, 1);
-            filtered = currentSlips.filter(s => new Date(s.created_at || s.match_datetime) >= yearStart);
+            filtered = filtered.filter(s => new Date(s.created_at || s.match_datetime) >= yearStart);
             title = "This Year's Report";
             break;
         case 'all':
@@ -267,6 +267,7 @@ async function generateReport(period) {
     }
     
     renderReport(title, filtered);
+    renderTrendChart(filtered, period);
     showToast('Report generated!', 'success');
 }
 
@@ -347,6 +348,77 @@ function renderReport(title, slips) {
             <td class="profit-display ${profitClass}">${profitText}</td>
         </tr>`;
     }).join('');
+}
+
+// ==================== REPORT TREND CHART ====================
+let reportTrendChart = null;
+function renderTrendChart(slips, period) {
+    const buckets = {};
+
+    slips.forEach(s => {
+        const d = new Date(s.created_at || s.match_datetime);
+        if (isNaN(d)) return;
+
+        let label;
+        let sortValue;
+        if (period === 'today') {
+            label = `${String(d.getHours()).padStart(2, '0')}:00`;
+            sortValue = d.getHours();
+        } else if (period === 'week' || period === 'month' || period === 'custom') {
+            label = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+            sortValue = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+        } else {
+            label = d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+            sortValue = Date.UTC(d.getFullYear(), d.getMonth(), 1);
+        }
+
+        if (!buckets[label]) {
+            buckets[label] = { label, value: 0, sortValue };
+        }
+        buckets[label].value += s.profit_loss || 0;
+    });
+
+    const points = Object.values(buckets).sort((a, b) => a.sortValue - b.sortValue);
+    const labels = points.map(pt => pt.label);
+    const data = points.map(pt => pt.value);
+    if (labels.length === 0) {
+        labels.push('No data');
+        data.push(0);
+    }
+
+    const ctx = document.getElementById('monthlyReportChart').getContext('2d');
+    if (reportTrendChart) reportTrendChart.destroy();
+    reportTrendChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Profit / Loss',
+                data,
+                backgroundColor: data.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+                borderColor: data.map(v => v >= 0 ? '#22c55e' : '#ef4444'),
+                borderWidth: 1,
+                borderRadius: 6,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => (ctx.raw >= 0 ? '+' : '') + formatCurrency(ctx.raw)
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#64748b', callback: v => formatCurrency(v) } }
+            }
+        }
+    });
 }
 
 // ==================== BOOKMAKER REPORT ====================
@@ -468,7 +540,12 @@ function generateCustomReport() {
     currentPeriod = 'custom';
     closeCustomRange();
     
-    const filtered = currentSlips.filter(s => {
+    const registeredNames = currentBookmakers.length ? currentBookmakers.map(bm => bm.name) : [];
+    let filtered = [...currentSlips];
+    if (registeredNames.length > 0) {
+        filtered = filtered.filter(s => registeredNames.includes(s.bookmaker_name));
+    }
+    filtered = filtered.filter(s => {
         const d = new Date(s.created_at || s.match_datetime);
         const sDate = new Date(start);
         const eDate = new Date(end);
@@ -477,6 +554,7 @@ function generateCustomReport() {
     });
     
     renderReport(`Report: ${start} to ${end}`, filtered);
+    renderTrendChart(filtered, currentPeriod);
     showToast('Custom report generated!', 'success');
 }
 

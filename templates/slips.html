@@ -13,8 +13,10 @@
             <p class="page-subtitle">Manage and track all your betting slips</p>
         </div>
         <div class="top-actions">
-            <button class="btn" onclick="exportSlips()"><i class="fas fa-download"></i> Export CSV</button>
-            <button class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> New Slip</button>
+            <button type="button" class="btn" onclick="exportSlips()"><i class="fas fa-download"></i> Export CSV</button>
+            <button type="button" class="btn" onclick="downloadAllSlipsPDF()"><i class="fas fa-file-pdf"></i> Download PDF</button>
+            <button type="button" class="btn" onclick="window.location.href='/bookmakers'"><i class="fas fa-building"></i> Bookmakers</button>
+            <button type="button" class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> New Slip</button>
         </div>
     </div>
 
@@ -32,9 +34,14 @@
             <option value="cashed">Cashed Out</option>
             <option value="void">Void</option>
         </select>
-        <select class="form-select" id="bookmakerFilter" style="width:160px" onchange="filterSlips()">
-            <option value="all">All Bookmakers</option>
-        </select>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <select class="form-select" id="bookmakerFilter" style="width:160px" onchange="filterSlips()">
+                <option value="all">All Bookmakers</option>
+            </select>
+            <button type="button" class="btn" style="padding:0 12px;height:40px;white-space:nowrap;" onclick="window.location.href='/bookmakers'">
+                <i class="fas fa-plus"></i> Add Bookmaker
+            </button>
+        </div>
         <input type="date" class="form-input" id="dateFilter" style="width:160px" onchange="filterSlips()">
     </div>
 
@@ -177,7 +184,7 @@ function renderSlips(slips) {
         return `
         <tr>
             <td>
-                <a href="javascript:void(0)" class="slip-link" onclick="viewSlip(${slip.id})">
+                <a href="#" class="slip-link" onclick="viewSlip(event, ${slip.id}); return false;">
                     <strong>${slip.slip_number}</strong>
                     ${slip.slip_name ? '<br><small>' + slip.slip_name + '</small>' : ''}
                 </a>
@@ -187,7 +194,7 @@ function renderSlips(slips) {
                 <span style="color:var(--text-muted);font-size:12px;">
                     ${matchCount} match${matchCount !== 1 ? 'es' : ''}
                 </span>
-                ${matchCount > 0 ? `<br><button class="btn btn-sm" style="padding:2px 8px;font-size:11px;margin-top:4px;" onclick="viewSlip(${slip.id})">View</button>` : ''}
+                ${matchCount > 0 ? `<br><button type="button" class="btn btn-sm" style="padding:2px 8px;font-size:11px;margin-top:4px;" onclick="viewSlip(event, ${slip.id})">View</button>` : ''}
             </td>
             <td class="stake-display">${formatCurrency(slip.stake)}</td>
             <td class="odds-display">${slip.odds ? slip.odds.toFixed(2) : '—'}</td>
@@ -212,7 +219,11 @@ function renderSlips(slips) {
 }
 
 // ==================== VIEW SLIP DETAILS ====================
-function viewSlip(id) {
+function viewSlip(event, id) {
+    if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+        event.stopPropagation();
+    }
     const slip = allSlips.find(s => s.id === id);
     if (!slip) return;
     
@@ -406,6 +417,11 @@ function exportSlips() {
     a.click();
     URL.revokeObjectURL(url);
     showToast('Slips exported to CSV', 'success');
+}
+
+function downloadAllSlipsPDF() {
+    showToast('Generating PDF...', 'info');
+    window.open('/api/reports/pdf?period=all', '_blank');
 }
 
 // ==================== UPDATE SLIP STATUS ====================

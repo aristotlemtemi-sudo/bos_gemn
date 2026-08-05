@@ -1210,17 +1210,32 @@ def generate_pdf_report():
     elif period == 'year':
         year_start = datetime.now().replace(month=1, day=1)
         query = query.filter(BetSlip.match_datetime >= year_start)
+    elif period == 'custom' and start_date and end_date:
+        try:
+            start = datetime.fromisoformat(start_date)
+            end = datetime.fromisoformat(end_date)
+            if end.time() == datetime.min.time():
+                end = end.replace(hour=23, minute=59, second=59)
+            query = query.filter(BetSlip.match_datetime >= start, BetSlip.match_datetime <= end)
+        except Exception:
+            pass
     elif start_date and end_date:
         try:
             start = datetime.fromisoformat(start_date)
             end = datetime.fromisoformat(end_date)
+            if end.time() == datetime.min.time():
+                end = end.replace(hour=23, minute=59, second=59)
             query = query.filter(BetSlip.match_datetime >= start, BetSlip.match_datetime <= end)
         except Exception:
             pass
 
-    slips = query.order_by(BetSlip.created_at.desc()).all()
     user = get_session_user()
     bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
+    bookmaker_ids = [bm.id for bm in bookmakers if bm.id]
+    if bookmaker_ids:
+        query = query.filter(BetSlip.bookmaker_id.in_(bookmaker_ids))
+
+    slips = query.order_by(BetSlip.created_at.desc()).all()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.4 * inch, bottomMargin=0.4 * inch, leftMargin=0.4 * inch, rightMargin=0.4 * inch)
