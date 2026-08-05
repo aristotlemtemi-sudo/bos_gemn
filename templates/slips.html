@@ -447,10 +447,19 @@ async function deleteSlip(id) {
     }
 }
 
-// ==================== MODAL CLOSE ====================
-document.getElementById('viewSlipModal').addEventListener('click', function(e) {
-    if (e.target === this) closeViewModal();
-});
+// ==================== MODAL CLOSE ====
+const viewSlipModal = document.getElementById('viewSlipModal');
+if (viewSlipModal) {
+    viewSlipModal.addEventListener('click', function(e) {
+        if (e.target === this) closeViewModal();
+    });
+    const viewSlipDialog = viewSlipModal.querySelector('.modal');
+    if (viewSlipDialog) {
+        viewSlipDialog.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+}
 
 document.addEventListener('DOMContentLoaded', loadSlips);
 </script>

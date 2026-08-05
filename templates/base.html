@@ -336,6 +336,7 @@ html[data-theme="light"] .modal{background:#ffffff}
     <div class="form-group">
         <label class="form-label">Bookmaker</label>
         <select class="form-select" id="globalBookmakerSelect"></select>
+        <div class="text-muted" id="globalBookmakerBalance" style="margin-top:6px;font-size:13px">Balance: TZS 0</div>
     </div>
     <div class="form-group">
         <label class="form-label">Total Stake (TZS)</label>
@@ -352,7 +353,9 @@ html[data-theme="light"] .modal{background:#ffffff}
     <!-- ==================== MODIFIED: Slip Name & Number ==================== -->
     <div class="form-group full"><label class="form-label">Slip Name *</label><input type="text" name="slip_name" class="form-input" placeholder="e.g. Weekend Acca, NBA Parlay" required></div>
     
-    <div class="form-group"><label class="form-label">Bookmaker *</label><select name="bookmaker" class="form-select" id="modalBookmakerSelect" required></select></div>
+    <div class="form-group"><label class="form-label">Bookmaker *</label><select name="bookmaker" class="form-select" id="modalBookmakerSelect" required></select>
+        <div class="text-muted" id="modalBookmakerBalance" style="margin-top:6px;font-size:13px">Balance: TZS 0</div>
+    </div>
     <div class="form-group"><label class="form-label">Total Stake (TZS) *</label><input type="number" name="stake" class="form-input" placeholder="e.g. 50000" min="100" required></div>
     
     <!-- ==================== NEW: Multiple Matches in One Slip ==================== -->
@@ -721,10 +724,32 @@ async function loadBookmakersSelect() {
         const bms = await res.json();
         const select = document.getElementById('modalBookmakerSelect');
         const globalSelect = document.getElementById('globalBookmakerSelect');
+        // Cache bookmakers for quick lookup
+        window.bookmakersCache = bms;
         const options = bms.map(bm => `<option value="${bm.name}">${bm.name} (${formatCurrency(bm.balance, 'TZS')})</option>`).join('');
         const fullOptions = options + '<option value="">Other</option>';
         if (select) select.innerHTML = fullOptions;
         if (globalSelect) globalSelect.innerHTML = fullOptions;
+
+        // Update balance displays when selection changes
+        function updateBookmakerBalances() {
+            const gSel = document.getElementById('globalBookmakerSelect');
+            const mSel = document.getElementById('modalBookmakerSelect');
+            const gBal = document.getElementById('globalBookmakerBalance');
+            const mBal = document.getElementById('modalBookmakerBalance');
+            const gName = gSel?.value || '';
+            const mName = mSel?.value || '';
+            const find = (name) => (window.bookmakersCache || []).find(b => b.name === name);
+            const gBm = find(gName);
+            const mBm = find(mName);
+            if (gBal) gBal.textContent = 'Balance: ' + (gBm ? formatCurrency(gBm.balance) : 'TZS 0');
+            if (mBal) mBal.textContent = 'Balance: ' + (mBm ? formatCurrency(mBm.balance) : 'TZS 0');
+        }
+
+        if (globalSelect) globalSelect.addEventListener('change', updateBookmakerBalances);
+        if (select) select.addEventListener('change', updateBookmakerBalances);
+        // initial update
+        updateBookmakerBalances();
     } catch (e) {}
 }
 

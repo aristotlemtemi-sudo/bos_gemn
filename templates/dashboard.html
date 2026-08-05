@@ -184,13 +184,17 @@ async function loadDashboard() {
         const statsRes = await fetch('/api/dashboard/stats');
         const stats = await statsRes.json();
         
+        const totalBankroll = typeof stats.total_bankroll === 'number' ? stats.total_bankroll : 0;
+        const totalDeposited = typeof stats.total_deposited === 'number' ? stats.total_deposited : 0;
+        const bookmakerCount = typeof stats.bookmaker_count === 'number' ? stats.bookmaker_count : 0;
+
         // Bankroll (real from bookmaker deposits)
-        document.getElementById('bankrollValue').textContent = formatCurrency(stats.total_bankroll);
-        document.getElementById('totalDeposited').textContent = formatCurrency(stats.total_deposited);
-        document.getElementById('depositCount').textContent = 'Across ' + stats.bookmaker_count + ' bookmakers';
+        document.getElementById('bankrollValue').textContent = formatCurrency(totalBankroll);
+        document.getElementById('totalDeposited').textContent = formatCurrency(totalDeposited);
+        document.getElementById('depositCount').textContent = 'Across ' + bookmakerCount + ' bookmakers';
         
         // Net P/L
-        const netPL = stats.total_bankroll - stats.total_deposited;
+        const netPL = totalBankroll - totalDeposited;
         const netEl = document.getElementById('netPL');
         netEl.textContent = (netPL >= 0 ? '+' : '') + formatCurrency(netPL);
         netEl.style.color = netPL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';

@@ -290,8 +290,15 @@ def dashboard_stats():
     roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
     strike_rate = (won_slips / (won_slips + lost_slips) * 100) if (won_slips + lost_slips) > 0 else 0
 
+    settings = get_or_create_settings()
     total_balance = db.session.query(db.func.sum(Bookmaker.balance)).filter(Bookmaker.user_id == user.id).scalar() or 0
     total_deposited = db.session.query(db.func.sum(Bookmaker.total_deposited)).filter(Bookmaker.user_id == user.id).scalar() or 0
+
+    if settings.manual_total_balance:
+        total_balance = settings.manual_total_balance
+    if settings.manual_total_deposited:
+        total_deposited = settings.manual_total_deposited
+
     bookmaker_count = Bookmaker.query.filter_by(user_id=user.id).count()
     at_stake = db.session.query(db.func.sum(BetSlip.stake)).filter(BetSlip.status == 'pending', BetSlip.user_id == user.id).scalar() or 0
 
@@ -525,7 +532,66 @@ def create_slip():
     db.session.add(slip)
     db.session.commit()
 
+    # Update bookmaker balance and create bankroll transaction for stake/settlement
     if slip.bookmaker_id:
+        bm = Bookmaker.query.get(slip.bookmaker_id)
+        if bm:
+            # New pending slip: deduct stake
+            if slip.status == 'pending':
+                bm.balance = (bm.balance or 0) - (slip.stake or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_stake',
+                    amount=slip.stake,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Stake for slip'
+                )
+                db.session.add(txn)
+            # Slip already settled on create (won/cashed/void/lost)
+            elif slip.status == 'won':
+                bm.balance = (bm.balance or 0) + (slip.return_amount or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_win',
+                    amount=slip.return_amount,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Slip won'
+                )
+                db.session.add(txn)
+            elif slip.status == 'cashed':
+                bm.balance = (bm.balance or 0) + (slip.return_amount or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='cashout',
+                    amount=slip.return_amount,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Cashout'
+                )
+                db.session.add(txn)
+            elif slip.status == 'void':
+                bm.balance = (bm.balance or 0) + (slip.stake or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_void',
+                    amount=slip.stake,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Void slip - stake returned'
+                )
+                db.session.add(txn)
+            db.session.commit()
+
         update_bookmaker_stats(slip.bookmaker_id)
 
     check_bankroll_alerts()
@@ -594,7 +660,66 @@ def update_slip(id):
 
     db.session.commit()
 
+    # Update bookmaker balance and transactions based on status transition
     if slip.bookmaker_id:
+        bm = Bookmaker.query.get(slip.bookmaker_id)
+        if bm:
+            # Transition from pending -> settled
+            if old_status == 'pending' and slip.status == 'won':
+                bm.balance = (bm.balance or 0) + (slip.return_amount or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_win',
+                    amount=slip.return_amount,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Slip won'
+                )
+                db.session.add(txn)
+            elif old_status == 'pending' and slip.status == 'lost':
+                # stake was deducted at placement; record loss for ledger
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_loss',
+                    amount=-(slip.stake or 0),
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Slip lost'
+                )
+                db.session.add(txn)
+            elif old_status == 'pending' and slip.status == 'cashed':
+                bm.balance = (bm.balance or 0) + (slip.return_amount or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='cashout',
+                    amount=slip.return_amount,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Cashout'
+                )
+                db.session.add(txn)
+            elif old_status == 'pending' and slip.status == 'void':
+                bm.balance = (bm.balance or 0) + (slip.stake or 0)
+                txn = BankrollTransaction(
+                    user_id=user.id,
+                    type='slip_void',
+                    amount=slip.stake,
+                    bookmaker_id=bm.id,
+                    bookmaker_name=bm.name,
+                    slip_id=slip.id,
+                    slip_number=slip.slip_number,
+                    description='Void slip - stake returned'
+                )
+                db.session.add(txn)
+
+            db.session.commit()
+
         update_bookmaker_stats(slip.bookmaker_id)
 
     check_bankroll_alerts()
@@ -607,6 +732,24 @@ def delete_slip(id):
     user = get_session_user()
     slip = BetSlip.query.filter_by(id=id, user_id=user.id).first_or_404()
     bm_id = slip.bookmaker_id
+    # If slip was pending, refund stake to bookmaker balance
+    if bm_id:
+        bm = Bookmaker.query.get(bm_id)
+        if bm and slip.status == 'pending':
+            bm.balance = (bm.balance or 0) + (slip.stake or 0)
+            txn = BankrollTransaction(
+                user_id=user.id,
+                type='slip_refund',
+                amount=slip.stake,
+                bookmaker_id=bm.id,
+                bookmaker_name=bm.name,
+                slip_id=slip.id,
+                slip_number=slip.slip_number,
+                description='Refund for deleted pending slip'
+            )
+            db.session.add(txn)
+            db.session.commit()
+
     db.session.delete(slip)
     db.session.commit()
 
