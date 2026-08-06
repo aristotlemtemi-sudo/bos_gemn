@@ -34,12 +34,13 @@ This project is ready for deployment with Render or Heroku:
 
 1. Create a Render account.
 2. Connect your GitHub repository.
-3. Add a Web Service with `python` env.
-4. Use `apt-get update && apt-get install -y tesseract-ocr && pip install --upgrade pip setuptools wheel && pip install -r requirements.txt` as the build command.
-5. Use `gunicorn app:app --bind 0.0.0.0:$PORT` as the start command.
-6. Set environment variables as needed.
+3. Add a Web Service with `docker` env.
+4. Set `Dockerfile Path` to `Dockerfile`.
+5. Do not override the build command; Render will build the Docker image from `Dockerfile`.
+6. Use `gunicorn app:app --bind 0.0.0.0:$PORT` as the start command if prompted.
+7. Set environment variables as needed.
 
-> Note: Tesseract OCR must be available in the Render build/runtime environment for screenshot/PDF text extraction to work.
+> Note: This app uses a Docker deployment because Tesseract OCR requires system-level binaries that are not available in Render's default Python build environment.
 
 ### Heroku
 
