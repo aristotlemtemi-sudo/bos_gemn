@@ -338,6 +338,8 @@ function renderReport(title, slips) {
             <td>
                 <strong>${s.slip_number}</strong>
                 ${s.slip_name ? '<br><small class="text-muted">' + s.slip_name + '</small>' : ''}
+                ${s.raw_text ? '<br><small class="text-muted">Note: ' + s.raw_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, ' ').slice(0, 120) + (s.raw_text.length > 120 ? '...' : '') + '</small>' : ''}
+                ${s.screenshot_name ? '<br><small class="text-muted">Attachment: ' + s.screenshot_name + '</small>' : ''}
             </td>
             <td>${s.bookmaker_name || '-'}</td>
             <td style="color:var(--text-muted);font-size:12px;">${matchCount} match${matchCount !== 1 ? 'es' : ''}</td>

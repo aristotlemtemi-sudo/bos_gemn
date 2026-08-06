@@ -363,9 +363,9 @@ html[data-theme="light"] .modal{background:#ffffff}
         <label class="form-label">Matches in this Slip</label>
         <div id="matchesContainer">
             <div class="match-row" style="display:grid;grid-template-columns:2fr 1.5fr 1fr auto;gap:8px;margin-bottom:8px;">
-                <input type="text" class="form-input match-event" placeholder="Event (e.g. Man Utd vs Liverpool)">
-                <input type="text" class="form-input match-selection" placeholder="Selection (e.g. Over 2.5)">
-                <input type="number" class="form-input match-odds" placeholder="Odds" step="0.01" min="1.01">
+                <input type="text" name="match_event_0" class="form-input match-event" placeholder="Event (e.g. Man Utd vs Liverpool)">
+                <input type="text" name="match_selection_0" class="form-input match-selection" placeholder="Selection (e.g. Over 2.5)">
+                <input type="number" name="match_odds_0" class="form-input match-odds" placeholder="Odds" step="0.01" min="1.01">
                 <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()" style="padding:4px 8px;">×</button>
             </div>
         </div>
@@ -382,20 +382,21 @@ html[data-theme="light"] .modal{background:#ffffff}
 </div>
 </div>
 <div id="pasteForm" style="display:none">
-<div class="form-group full"><label class="form-label">Paste Slip Text</label><textarea class="form-textarea" style="min-height:200px" placeholder="Paste your betting slip text here..."></textarea></div>
+<div class="form-group full"><label class="form-label">Paste Slip Text</label><textarea name="pasted_text" class="form-textarea" style="min-height:200px" placeholder="Paste your betting slip text here..."></textarea></div>
 </div>
 <div id="screenshotForm" style="display:none">
 <div class="upload-zone" onclick="document.getElementById('screenshotInput').click()">
 <i class="fas fa-camera"></i>
-<p><strong>Click to upload screenshot</strong><br>or drag and drop here<br><span style="color:var(--text-muted);font-size:12px">Supports JPG, PNG, WEBP</span></p>
-<input type="file" name="screenshot" id="screenshotInput" style="display:none" accept="image/*" onchange="handleFileSelect(this)">
+<p><strong>Click to upload screenshot or PDF</strong><br>or drag and drop here<br><span style="color:var(--text-muted);font-size:12px">Supports JPG, PNG, WEBP, PDF</span></p>
+<input type="file" name="screenshot" id="screenshotInput" style="display:none" accept="image/*,.pdf" onchange="handleFileSelect(this)">
 </div>
 <div class="form-group" style="margin-top:12px;">
     <label class="form-label">Screenshot Name</label>
     <input type="text" id="screenshotName" class="form-input" placeholder="e.g. Bet365 screenshot" value="">
 </div>
 <div id="screenshotPreview" style="margin-top:16px;display:none">
-<img id="previewImg" style="max-width:100%;border-radius:8px;border:1px solid var(--glass-border)">
+    <img id="previewImg" style="max-width:100%;border-radius:8px;border:1px solid var(--glass-border);display:none">
+    <div id="previewText" style="display:none;color:var(--text-muted);font-size:13px;line-height:1.5;"></div>
 </div>
 </div>
 </form>
@@ -614,13 +615,26 @@ function switchModalTab(btn, formId) {
 
 function handleFileSelect(input) {
     if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = document.getElementById('previewImg');
-            const preview = document.getElementById('screenshotPreview');
-            if (img && preview) { img.src = e.target.result; preview.style.display = 'block'; }
-        };
-        reader.readAsDataURL(input.files[0]);
+        const file = input.files[0];
+        const preview = document.getElementById('screenshotPreview');
+        const img = document.getElementById('previewImg');
+        const previewText = document.getElementById('previewText');
+        if (!preview || !img || !previewText) return;
+
+        preview.style.display = 'block';
+        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+            img.style.display = 'none';
+            previewText.style.display = 'block';
+            previewText.textContent = `Selected file: ${file.name}`;
+        } else {
+            previewText.style.display = 'none';
+            img.style.display = 'block';
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
     }
 }
 
@@ -668,20 +682,27 @@ async function saveBet() {
     const stake = document.getElementById('globalStake').value;
     const odds = document.getElementById('globalOdds').value;
     const screenshotName = document.getElementById('screenshotName').value.trim();
+    const pastedTextEl = document.querySelector('textarea[name="pasted_text"]');
+    const pastedText = pastedTextEl ? pastedTextEl.value.trim() : '';
     
     // Collect matches
     const matches = [];
     document.querySelectorAll('.match-row').forEach(row => {
-        const event = row.querySelector('.match-event').value;
-        const selection = row.querySelector('.match-selection').value;
-        const odds = parseFloat(row.querySelector('.match-odds').value);
-        if (event && selection && odds) {
-            matches.push({event, selection, odds});
+        const event = (row.querySelector('.match-event')?.value || '').trim();
+        const selection = (row.querySelector('.match-selection')?.value || '').trim();
+        const oddsValue = parseFloat(row.querySelector('.match-odds')?.value);
+        if ((event || selection) && !Number.isNaN(oddsValue)) {
+            matches.push({event, selection, odds: oddsValue});
         }
     });
     
     const formData = new FormData(form);
-    formData.append('matches', JSON.stringify(matches));
+    if (matches.length > 0) {
+        formData.set('matches', JSON.stringify(matches));
+    }
+    if (pastedText) {
+        formData.set('pasted_text', pastedText);
+    }
     formData.set('slip_name', slipName || formData.get('slip_name') || '');
     formData.set('bookmaker', bookmaker || formData.get('bookmaker') || '');
     formData.set('stake', stake || formData.get('stake') || '');

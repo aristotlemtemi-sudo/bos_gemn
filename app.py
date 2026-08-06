@@ -8,6 +8,23 @@ import os
 import json
 import io
 import re
+import shutil
+
+try:
+    import pytesseract
+    from PIL import Image
+    PYTESSERACT_AVAILABLE = bool(shutil.which('tesseract'))
+except ImportError:
+    pytesseract = None
+    Image = None
+    PYTESSERACT_AVAILABLE = False
+
+try:
+    from PyPDF2 import PdfReader
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PdfReader = None
+    PYPDF2_AVAILABLE = False
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -54,6 +71,69 @@ def inject_globals():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+
+def extract_text_from_image(file_storage):
+    if not PYTESSERACT_AVAILABLE or Image is None:
+        return ''
+    try:
+        file_storage.stream.seek(0)
+        image = Image.open(file_storage.stream)
+        return pytesseract.image_to_string(image)
+    except Exception:
+        return ''
+
+
+def extract_text_from_pdf(file_storage):
+    if not PYPDF2_AVAILABLE or PdfReader is None:
+        return ''
+    try:
+        file_storage.stream.seek(0)
+        reader = PdfReader(file_storage.stream)
+        pages = [page.extract_text() or '' for page in reader.pages]
+        return '\n'.join(pages)
+    except Exception:
+        return ''
+
+
+def parse_matches_from_text(text):
+    if not text:
+        return []
+    matches = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        odds_matches = list(re.finditer(r'(\d+(?:\.\d+)?)', line))
+        if not odds_matches:
+            continue
+        odds_match = odds_matches[-1]
+        try:
+            odds_value = float(odds_match.group(1))
+        except ValueError:
+            continue
+        left = line[:odds_match.start()].strip()
+        left = re.sub(r'\b(?:Odds|odds|@)\b', '', left).strip(' -:')
+        event = ''
+        selection = ''
+        if ':' in left:
+            parts = left.split(':', 1)
+            event, selection = parts[0].strip(), parts[1].strip()
+        elif ' - ' in left:
+            parts = left.split(' - ', 1)
+            event, selection = parts[0].strip(), parts[1].strip()
+        elif ' | ' in left:
+            parts = left.split(' | ', 1)
+            event, selection = parts[0].strip(), parts[1].strip()
+        elif ' vs ' in left.lower():
+            event = left
+            selection = ''
+        else:
+            event = left
+            selection = ''
+        if event or selection:
+            matches.append({'event': event, 'selection': selection, 'odds': odds_value})
+    return matches
 
 
 def get_or_create_default_user():
@@ -429,14 +509,22 @@ def create_slip():
 
     screenshot_path = ''
     screenshot_name = data.get('screenshot_name', '').strip() or ''
+    extracted_text = ''
+    pasted_text = data.get('pasted_text', '').strip() or ''
     if 'screenshot' in request.files:
         file = request.files['screenshot']
         if file and allowed_file(file.filename):
+            ext = os.path.splitext(file.filename)[1].lower() or '.jpg'
+            if ext == '.pdf':
+                extracted_text = extract_text_from_pdf(file)
+            else:
+                extracted_text = extract_text_from_image(file)
+
             base_name = secure_filename((screenshot_name or 'screenshot').strip() or 'screenshot').lower()
             base_name = re.sub(r'[^a-z0-9]+', '_', base_name).strip('_') or 'screenshot'
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            ext = os.path.splitext(file.filename)[1].lower() or '.jpg'
             filename = f"slip_{base_name}_{timestamp}{ext}"
+            file.stream.seek(0)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             screenshot_path = f'/static/uploads/{filename}'
 
@@ -472,6 +560,12 @@ def create_slip():
         elif isinstance(matches_raw, list):
             matches_list = matches_raw
 
+    if not matches_list and pasted_text:
+        matches_list = parse_matches_from_text(pasted_text)
+
+    if not matches_list and extracted_text:
+        matches_list = parse_matches_from_text(extracted_text)
+
     if matches_list:
         combined = 1.0
         for m in matches_list:
@@ -503,6 +597,7 @@ def create_slip():
         screenshot_path=screenshot_path,
         screenshot_name=screenshot_name,
         strategy_tag=data.get('strategy_tag', '') or '',
+        raw_text=(extracted_text or pasted_text or '').strip(),
         match_datetime=match_datetime
     )
 
@@ -1351,6 +1446,13 @@ def generate_pdf_report():
                 m_title = f"{slip.home_team} vs {slip.away_team}" if slip.home_team and slip.away_team else slip.prediction
                 slip_desc = f"{slip.slip_name}\n[{m_title}]" if m_title else slip.slip_name
 
+            if slip.raw_text:
+                slip_desc += f"\nExtracted: {slip.raw_text[:120].replace('\n', ' ')}..."
+            if slip.screenshot_name:
+                slip_desc += f"\nScreenshot: {slip.screenshot_name}"
+            elif slip.screenshot_path:
+                slip_desc += "\nScreenshot attached"
+
             table_data.append([
                 slip.slip_number,
                 slip_desc,
@@ -1533,6 +1635,8 @@ def initialize_database():
             db.session.execute(db.text('ALTER TABLE user_settings ADD COLUMN manual_total_deposited FLOAT DEFAULT 0'))
         if 'screenshot_name' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
             db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN screenshot_name VARCHAR(200) DEFAULT ""'))
+        if 'raw_text' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
+            db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN raw_text TEXT DEFAULT ""'))
         db.session.commit()
 
 

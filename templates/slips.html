@@ -187,6 +187,7 @@ function renderSlips(slips) {
                 <a href="#" class="slip-link" onclick="viewSlip(event, ${slip.id}); return false;">
                     <strong>${slip.slip_number}</strong>
                     ${slip.slip_name ? '<br><small>' + slip.slip_name + '</small>' : ''}
+                    ${slip.raw_text ? '<br><small style="color:var(--text-muted);">' + slip.raw_text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, ' ').slice(0, 100) + (slip.raw_text.length > 100 ? '...' : '') + '</small>' : ''}
                 </a>
             </td>
             <td style="color:var(--text-secondary);">${slip.bookmaker_name || '—'}</td>
@@ -330,6 +331,22 @@ function viewSlip(event, id) {
         </div>
         ` : ''}
         
+        ${slip.raw_text ? `
+        <div style="margin-bottom:16px;">
+            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Extracted Text</h4>
+            <div style="padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--glass-border);font-size:13px;line-height:1.6;white-space:pre-wrap;">${slip.raw_text}</div>
+        </div>
+        ` : ''}
+        
+        ${slip.screenshot_path ? `
+        <div style="margin-bottom:16px;">
+            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Screenshot / Attachment</h4>
+            <a href="${slip.screenshot_path}" target="_blank" style="display:inline-block;padding:12px 14px;background:var(--bg-card);border-radius:8px;border:1px solid var(--glass-border);text-decoration:none;color:var(--accent-blue);font-size:13px;">
+                View uploaded file${slip.screenshot_name ? `: ${slip.screenshot_name}` : ''}
+            </a>
+        </div>
+        ` : ''}
+        
         ${slip.strategy_tag ? `
         <div>
             <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Strategy</h4>
@@ -386,12 +403,12 @@ function filterSlips() {
 
 // ==================== EXPORT SLIPS (CSV) ====================
 function exportSlips() {
-    const headers = ['Slip #', 'Slip Name', 'Bookmaker', 'Matches', 'Stake', 'Odds', 'Status', 'Profit/Loss', 'Return', 'Date', 'Strategy'];
+    const headers = ['Slip #', 'Slip Name', 'Bookmaker', 'Matches', 'Stake', 'Odds', 'Status', 'Profit/Loss', 'Return', 'Date', 'Strategy', 'Extracted Text', 'Attachment'];
     
     const rows = allSlips.map(s => {
         let matches = parseMatches(s.matches);
         const matchSummary = matches.map(m => `${m.event}: ${m.selection} @ ${m.odds}`).join('; ');
-        
+        const extractedText = (s.raw_text || '').replace(/\n/g, ' ').replace(/"/g, '""');
         return [
             `"${s.slip_number}"`,
             `"${s.slip_name || ''}"`,
@@ -403,7 +420,9 @@ function exportSlips() {
             s.profit_loss,
             s.return_amount || 0,
             new Date(s.created_at || s.match_datetime).toISOString(),
-            `"${s.strategy_tag || ''}"`
+            `"${s.strategy_tag || ''}"`,
+            `"${extractedText}"`,
+            `"${s.screenshot_name || ''}"`
         ];
     });
     
