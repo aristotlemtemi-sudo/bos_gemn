@@ -7,5 +7,5 @@ python-dotenv==1.0.1
 reportlab==4.0.9
 Pillow>=10.4.0
 PyPDF2==3.0.0
-pytesseract==0.3.11
+pytesseract>=0.3.10
 gunicorn==23.0.0
