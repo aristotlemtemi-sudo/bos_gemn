@@ -108,6 +108,13 @@ class BetSlip(db.Model):
     raw_text = db.Column(db.Text, default='')
     strategy_tag = db.Column(db.String(100), default='')
     
+    # FOLLOW UP (settled bet review)
+    # Example: {"matchIndex": 2, "event": "Chelsea vs Arsenal", "selection": "Home Win"}
+    lost_matches = db.Column(db.Text, default='[]')           # JSON list of matches that caused the loss
+    # Example: {"x": 42.5, "y": 31.2, "size": 4.0}  (percentages of the screenshot dimensions)
+    screenshot_annotations = db.Column(db.Text, default='[]')  # JSON list of X marks placed on the screenshot
+    follow_up_notes = db.Column(db.Text, default='')           # comments about what went wrong / lost teams
+    
     # Timestamps
     match_datetime = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -137,6 +144,28 @@ class BetSlip(db.Model):
     def get_match_count(self):
         """Return number of matches in this slip."""
         return len(self.get_matches())
+
+    def get_lost_matches(self):
+        """Parse lost matches JSON to Python list."""
+        try:
+            return json.loads(self.lost_matches) if self.lost_matches else []
+        except Exception:
+            return []
+
+    def set_lost_matches(self, lost_list):
+        """Store lost matches list as JSON."""
+        self.lost_matches = json.dumps(lost_list)
+
+    def get_screenshot_annotations(self):
+        """Parse screenshot annotation marks to Python list."""
+        try:
+            return json.loads(self.screenshot_annotations) if self.screenshot_annotations else []
+        except Exception:
+            return []
+
+    def set_screenshot_annotations(self, annotations):
+        """Store screenshot annotations as JSON."""
+        self.screenshot_annotations = json.dumps(annotations)
 
     def to_dict(self):
         matches = self.get_matches()
@@ -171,6 +200,9 @@ class BetSlip(db.Model):
             'screenshot_name': self.screenshot_name,
             'raw_text': self.raw_text,
             'strategy_tag': self.strategy_tag,
+            'lost_matches': self.get_lost_matches(),
+            'screenshot_annotations': self.get_screenshot_annotations(),
+            'follow_up_notes': self.follow_up_notes,
             'match_datetime': self.match_datetime.isoformat() if self.match_datetime else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'settled_at': self.settled_at.isoformat() if self.settled_at else None

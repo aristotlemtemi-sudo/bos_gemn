@@ -270,6 +270,7 @@ html[data-theme="light"] .modal{background:#ffffff}
 <a href="/slips" class="nav-item" id="nav-slips"><i class="fas fa-receipt"></i><span class="nav-label">All Slips</span></a>
 <a href="/analytics" class="nav-item" id="nav-analytics"><i class="fas fa-chart-pie"></i><span class="nav-label">Analytics</span></a>
 <a href="/reports" class="nav-item" id="nav-reports"><i class="fas fa-file-alt"></i><span class="nav-label">Reports</span></a>
+<a href="/follow-up" class="nav-item" id="nav-followup"><i class="fas fa-clipboard-check"></i><span class="nav-label">Follow Up</span></a>
 </div>
 <div class="nav-section">
 <div class="section-title">Management</div>
@@ -583,7 +584,7 @@ function setActiveNav() {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const navMap = {
         '/': 'nav-dashboard', '/dashboard': 'nav-dashboard', '/slips': 'nav-slips',
-        '/analytics': 'nav-analytics', '/reports': 'nav-reports',
+        '/analytics': 'nav-analytics', '/reports': 'nav-reports', '/follow-up': 'nav-followup',
         '/bankroll': 'nav-bankroll', '/bookmakers': 'nav-bookmakers', '/settings': 'nav-settings'
     };
     const navId = navMap[path];

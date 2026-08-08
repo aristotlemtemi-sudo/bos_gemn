@@ -12,12 +12,15 @@ import shutil
 
 try:
     import pytesseract
-    from PIL import Image
     PYTESSERACT_AVAILABLE = bool(shutil.which('tesseract'))
 except ImportError:
     pytesseract = None
-    Image = None
     PYTESSERACT_AVAILABLE = False
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 try:
     from PyPDF2 import PdfReader
@@ -30,7 +33,7 @@ try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image as PlatypusImage
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     REPORTLAB_AVAILABLE = True
@@ -233,6 +236,11 @@ def get_session_user():
         if user:
             return user
 
+    user = User.query.filter(User.email == 'default-user@bosgemn.local').first()
+    if user:
+        app.config['DEFAULT_USER_ID'] = user.id
+        return user
+
     user = User(
         username='default-user',
         email='default-user@bosgemn.local',
@@ -324,6 +332,11 @@ def bankroll():
 @app.route('/bookmakers')
 def bookmakers():
     return render_template('bookmakers.html')
+
+
+@app.route('/follow-up')
+def follow_up():
+    return render_template('follow_up.html')
 
 
 @app.route('/settings')
@@ -852,6 +865,295 @@ def delete_slip(id):
         update_bookmaker_stats(bm_id)
 
     return jsonify({'message': 'Slip deleted'})
+
+
+# ============ FOLLOW UP ============
+
+def is_followup_slip(slip):
+    """A slip qualifies for follow-up once settled and it has a screenshot or copied text."""
+    return slip.status in ('won', 'lost', 'cashed', 'void') and bool(slip.screenshot_path or slip.raw_text)
+
+
+def safe_lost_matches(raw):
+    """Normalize a saved lost_matches payload into a list of dicts."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    result = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                result.append({
+                    'index': item.get('index'),
+                    'event': item.get('event', ''),
+                    'selection': item.get('selection', ''),
+                    'lost': bool(item.get('lost', True))
+                })
+            elif isinstance(item, int):
+                result.append({'index': item, 'event': '', 'selection': '', 'lost': True})
+    return result
+
+
+def safe_screenshot_annotations(raw):
+    """Normalize screenshot annotation marks into a list of {x, y, size}."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    result = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                try:
+                    result.append({
+                        'x': float(item.get('x', 50)),
+                        'y': float(item.get('y', 50)),
+                        'size': float(item.get('size', 4))
+                    })
+                except (TypeError, ValueError):
+                    continue
+    return result
+
+
+def bake_annotations_to_image(screenshot_path, annotations, out_path):
+    """Copy a screenshot to out_path with red X marks baked in (used for the PDF report)."""
+    if not Image:
+        return False
+    try:
+        from PIL import ImageDraw as _ImageDraw
+        img_path = os.path.join(app.root_path, screenshot_path.lstrip('/')) \
+            if screenshot_path.startswith('/static/') else screenshot_path
+        img = Image.open(img_path).convert('RGB')
+        draw = _ImageDraw.Draw(img)
+        width, height = img.size
+        for ann in annotations:
+            x = (ann['x'] / 100.0) * width
+            y = (ann['y'] / 100.0) * height
+            size = (ann['size'] / 100.0) * width
+            half = max(6, size / 2.0)
+            lw = max(4, int(size * 0.16))
+            draw.line([(x - half, y - half), (x + half, y + half)], fill=(239, 68, 68), width=lw)
+            draw.line([(x - half, y + half), (x + half, y - half)], fill=(239, 68, 68), width=lw)
+        img.save(out_path, 'PNG')
+        return True
+    except Exception:
+        return False
+
+
+@app.route('/api/followup')
+def get_followup():
+    user = get_session_user()
+    status_filter = request.args.get('status')
+    slips = BetSlip.query.filter(
+        BetSlip.user_id == user.id,
+        BetSlip.status.in_(['won', 'lost', 'cashed', 'void'])
+    ).order_by(BetSlip.settled_at.desc(), BetSlip.created_at.desc()).all()
+
+    result = []
+    for s in slips:
+        if not is_followup_slip(s):
+            continue
+        if status_filter and status_filter != 'all' and s.status != status_filter:
+            continue
+        data = s.to_dict()
+        # Ensure lost_matches entries line up with the matches stored on the slip
+        matches = data.get('matches', [])
+        lost_map = {str(lm.get('index')): lm for lm in data.get('lost_matches', [])}
+        normalized_lost = []
+        for i, m in enumerate(matches):
+            existing = lost_map.get(str(i))
+            normalized_lost.append({
+                'index': i,
+                'event': m.get('event', ''),
+                'selection': m.get('selection', ''),
+                'lost': bool(existing.get('lost')) if existing else False
+            })
+        data['lost_matches'] = normalized_lost
+        result.append(data)
+    return jsonify(result)
+
+
+@app.route('/api/followup/<int:id>', methods=['PUT'])
+def update_followup(id):
+    user = get_session_user()
+    slip = BetSlip.query.filter_by(id=id, user_id=user.id).first_or_404()
+    data = request.get_json() or {}
+
+    if 'lost_matches' in data:
+        slip.set_lost_matches(safe_lost_matches(data.get('lost_matches')))
+    if 'screenshot_annotations' in data:
+        slip.set_screenshot_annotations(safe_screenshot_annotations(data.get('screenshot_annotations')))
+    if 'follow_up_notes' in data:
+        slip.follow_up_notes = (data.get('follow_up_notes') or '').strip()
+
+    db.session.commit()
+    return jsonify(slip.to_dict())
+
+
+@app.route('/api/followup/pdf')
+def followup_pdf():
+    if not REPORTLAB_AVAILABLE:
+        return jsonify({'error': 'ReportLab is not installed on the server. Unable to export PDF.'}), 500
+
+    settings = get_or_create_settings()
+    currency = settings.pdf_currency or 'TZS'
+    company_name = settings.pdf_company_name or 'BOS GEMN'
+
+    user = get_session_user()
+    slips = BetSlip.query.filter(
+        BetSlip.user_id == user.id,
+        BetSlip.status.in_(['won', 'lost', 'cashed', 'void'])
+    ).order_by(BetSlip.settled_at.desc(), BetSlip.created_at.desc()).all()
+    slips = [s for s in slips if is_followup_slip(s)]
+
+    if not slips:
+        return jsonify({'error': 'No settled slips with screenshots or copied text to report.'}), 400
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch
+    )
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('FU_Title', parent=styles['Heading1'], fontSize=20,
+                                 textColor=colors.HexColor('#3b82f6'), spaceAfter=6, alignment=TA_CENTER)
+    subtitle_style = ParagraphStyle('FU_SubTitle', parent=styles['Normal'], fontSize=11,
+                                    textColor=colors.HexColor('#64748b'), spaceAfter=16, alignment=TA_CENTER)
+    heading_style = ParagraphStyle('FU_Heading', parent=styles['Heading2'], fontSize=13,
+                                   textColor=colors.HexColor('#0f172a'), spaceAfter=6, spaceBefore=6)
+    label_style = ParagraphStyle('FU_Label', parent=styles['Normal'], fontSize=8,
+                                 textColor=colors.HexColor('#64748b'), spaceAfter=2)
+    body_style = ParagraphStyle('FU_Body', parent=styles['Normal'], fontSize=9, leading=13)
+    small_style = ParagraphStyle('FU_Small', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor('#334155'))
+
+    story = []
+    story.append(Paragraph(company_name.upper(), title_style))
+    story.append(Paragraph('FOLLOW UP REPORT — SETTLED BETS (one slip per page)', subtitle_style))
+
+    tmp_dir = os.path.join(app.config['UPLOAD_FOLDER'], '_followup_tmp')
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    for idx, slip in enumerate(slips):
+        if idx > 0:
+            story.append(PageBreak())
+
+        lost_count = len([lm for lm in slip.get_lost_matches() if lm.get('lost')])
+        lost_matches = slip.get_lost_matches()
+        annotations = slip.get_screenshot_annotations()
+
+        info_data = [
+            ['Slip #', slip.slip_number or '-', 'Slip Name', slip.slip_name or '-'],
+            ['Bookmaker', slip.bookmaker_name or '-', 'Status', slip.status.upper()],
+            ['Stake', f"{currency} {slip.stake or 0:,.0f}", 'Odds', f"{slip.odds:.2f}"],
+            ['P/L', f"{currency} {slip.profit_loss or 0:,.0f}", 'Settled',
+             slip.settled_at.strftime('%Y-%m-%d %H:%M') if slip.settled_at else '-']
+        ]
+        info_table = Table(info_data, colWidths=[0.9 * inch, 1.6 * inch, 0.9 * inch, 1.6 * inch])
+        info_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#f1f5f9')),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(info_table)
+        story.append(Paragraph(
+            f"Status: {slip.status.upper()} · {lost_count} match(es) marked as lost" if lost_count else
+            f"Status: {slip.status.upper()}",
+            ParagraphStyle('FU_Status', parent=styles['Normal'], fontSize=9, spaceBefore=6,
+                           textColor=colors.HexColor('#dc2626') if slip.status == 'lost' else colors.HexColor('#16a34a'),
+                           spaceAfter=10)
+        ))
+
+        # ---- Screenshot section (with baked X annotations) ----
+        if slip.screenshot_path:
+            story.append(Paragraph('SCREENSHOT', heading_style))
+            img_path = os.path.join(app.root_path, slip.screenshot_path.lstrip('/')) \
+                if slip.screenshot_path.startswith('/static/') else slip.screenshot_path
+            tmp_img = os.path.join(tmp_dir, f'slip_{slip.id}_annotated.png')
+            used_path = img_path
+            if annotations and Image:
+                if bake_annotations_to_image(slip.screenshot_path, annotations, tmp_img):
+                    used_path = tmp_img
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(used_path) as pimg:
+                    iw, ih = pimg.size
+                max_w = 7.1 * inch
+                max_h = 8.6 * inch
+                ratio = min(max_w / iw, max_h / ih)
+                disp_w = iw * ratio
+                disp_h = ih * ratio
+                story.append(PlatypusImage(used_path, width=disp_w, height=disp_h))
+            except Exception:
+                story.append(Paragraph('(Screenshot could not be embedded)', small_style))
+            story.append(Spacer(1, 8))
+
+        # ---- Copied text section ----
+        if slip.raw_text:
+            story.append(Paragraph('COPIED SLIP TEXT', heading_style))
+            text = slip.raw_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            story.append(Paragraph(text.replace('\n', '<br/>'), small_style))
+            story.append(Spacer(1, 8))
+
+        # ---- Matches list with lost markers ----
+        matches = slip.get_matches()
+        if matches:
+            story.append(Paragraph('SELECTIONS & FOLLOW UP', heading_style))
+            m_data = [['#', 'Event', 'Selection', 'Odds', 'Result']]
+            lost_lookup = {str(lm.get('index')): lm for lm in lost_matches}
+            for i, m in enumerate(matches):
+                lm = lost_lookup.get(str(i))
+                is_lost = bool(lm and lm.get('lost'))
+                m_data.append([
+                    str(i + 1),
+                    m.get('event', '') or '-',
+                    m.get('selection', '') or '-',
+                    f"{m.get('odds', 0):.2f}",
+                    'LOST ✗' if is_lost else '—'
+                ])
+            m_table = Table(m_data, colWidths=[0.4 * inch, 2.6 * inch, 1.7 * inch, 0.6 * inch, 0.8 * inch])
+            m_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#f8fafc'), colors.HexColor('#ffffff')]),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(m_table)
+            story.append(Spacer(1, 10))
+
+        # ---- Follow up notes ----
+        story.append(Paragraph('FOLLOW UP NOTES', heading_style))
+        if slip.follow_up_notes:
+            notes = slip.follow_up_notes.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            story.append(Paragraph(notes.replace('\n', '<br/>'), body_style))
+        else:
+            story.append(Paragraph('No follow up notes recorded yet.', small_style))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    response = make_response(buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = (
+        f'attachment; filename=FollowUp_Report_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf'
+    )
+    return response
 
 
 def update_bookmaker_stats(bookmaker_id):
@@ -1637,6 +1939,12 @@ def initialize_database():
             db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN screenshot_name VARCHAR(200) DEFAULT ""'))
         if 'raw_text' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
             db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN raw_text TEXT DEFAULT ""'))
+        if 'follow_up_notes' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
+            db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN follow_up_notes TEXT DEFAULT ""'))
+        if 'lost_matches' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
+            db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN lost_matches TEXT DEFAULT "[]"'))
+        if 'screenshot_annotations' not in {col['name'] for col in inspector.get_columns('bet_slips')}:
+            db.session.execute(db.text('ALTER TABLE bet_slips ADD COLUMN screenshot_annotations TEXT DEFAULT "[]"'))
         db.session.commit()
 
 

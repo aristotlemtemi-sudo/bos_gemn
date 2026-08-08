@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Follow Up - BOS GEMN{% endblock %}
+{% block page_title %}Follow Up{% endblock %}
+{% block page_subtitle %}Review settled bets — mark losing teams on screenshots & copied text{% endblock %}
+
+{% block content %}
+<div class="section active" id="followup">
+
+    <style>
+    .fu-topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+    .fu-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+    .fu-stats .stat-card{padding:18px 20px}
+    .fu-card{background:var(--bg-card);border:1px solid var(--glass-border);border-radius:var(--radius);padding:24px;backdrop-filter:blur(10px);margin-bottom:24px;transition:var(--transition)}
+    .fu-card:hover{border-color:var(--glass-glow);box-shadow:var(--shadow)}
+    .fu-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+    .fu-header-left{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .fu-title{font-size:17px;font-weight:700}
+    .fu-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+    .fu-meta{display:flex;gap:20px;flex-wrap:wrap;padding:14px 16px;background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);border-radius:var(--radius-sm);margin-bottom:18px}
+    .fu-meta-item{min-width:90px}
+    .fu-meta-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}
+    .fu-meta-value{font-size:14px;font-weight:600}
+    .fu-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-secondary);margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+    .fu-section-title i{color:var(--accent-blue)}
+    .fu-hint{font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5}
+    .fu-annotate{position:relative;display:inline-block;max-width:100%;cursor:crosshair;border:1px solid var(--glass-border);border-radius:var(--radius-sm);overflow:hidden;line-height:0}
+    .fu-annotate img{max-width:100%;display:block}
+    .fu-annotate.uploaded{border-color:rgba(59,130,246,0.4)}
+    .fu-marks{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+    .fu-x{position:absolute;transform:translate(-50%,-50%);color:var(--accent-red);font-weight:900;line-height:1;display:flex;align-items:center;justify-content:center;text-shadow:0 0 6px rgba(0,0,0,0.9);pointer-events:auto;cursor:pointer;user-select:none;transition:transform 0.15s ease}
+    .fu-x:hover{transform:translate(-50%,-50%) scale(1.2)}
+    .fu-matches{width:100%;border-collapse:collapse;margin-bottom:8px}
+    .fu-matches th{text-align:left;padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);border-bottom:1px solid var(--glass-border)}
+    .fu-matches td{padding:12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:middle}
+    .fu-matches tr:hover td{background:rgba(255,255,255,0.02)}
+    .fu-check{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600}
+    .fu-check input{width:18px;height:18px;accent-color:var(--accent-red);cursor:pointer}
+    .fu-match-lost{text-decoration:line-through;opacity:0.55;color:var(--accent-red)}
+    .fu-notes{width:100%;min-height:90px;resize:vertical;padding:12px 16px;border-radius:var(--radius-sm);border:1px solid var(--glass-border);background:rgba(255,255,255,0.03);color:var(--text-primary);font-family:inherit;font-size:14px;transition:var(--transition);outline:none}
+    .fu-notes:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+    .fu-footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px;flex-wrap:wrap}
+    .fu-saved{font-size:12px;color:var(--accent-green);display:none;align-items:center;gap:6px}
+    .fu-saved.show{display:inline-flex}
+    .fu-unsaved{font-size:12px;color:var(--accent-orange);display:none}
+    .fu-unsaved.show{display:inline-flex}
+    .fu-badge{font-size:12px}
+    @media(max-width:768px){.fu-header{flex-direction:column}}
+    </style>
+
+    <!-- ==================== TOP BAR ==================== -->
+    <div class="fu-topbar">
+        <div>
+            <p style="color:var(--text-secondary);font-size:14px;">
+                Mark an <strong style="color:var(--accent-red)">X</strong> on the losing team directly on the screenshot,
+                tick the losing selections from copied text, and add notes about each settled slip.
+            </p>
+        </div>
+        <div class="top-actions">
+            <button type="button" class="btn" onclick="saveAllDrafts()"><i class="fas fa-save"></i> Save All</button>
+            <button type="button" class="btn btn-primary" onclick="downloadFollowUpPDF()"><i class="fas fa-file-pdf"></i> Download Report</button>
+        </div>
+    </div>
+
+    <!-- ==================== STATS ==================== -->
+    <div class="fu-stats">
+        <div class="stat-card">
+            <div class="stat-header"><span class="stat-label">Settled Bets</span><div class="stat-icon blue"><i class="fas fa-receipt"></i></div></div>
+            <div class="stat-value" id="fuTotal">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header"><span class="stat-label">Won</span><div class="stat-icon green"><i class="fas fa-check-circle"></i></div></div>
+            <div class="stat-value" id="fuWon">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header"><span class="stat-label">Lost</span><div class="stat-icon red"><i class="fas fa-times-circle"></i></div></div>
+            <div class="stat-value" id="fuLost">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header"><span class="stat-label">Reviewed</span><div class="stat-icon orange"><i class="fas fa-clipboard-check"></i></div></div>
+            <div class="stat-value" id="fuReviewed">0</div>
+        </div>
+    </div>
+
+    <!-- ==================== FILTERS ==================== -->
+    <div class="search-bar">
+        <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-input" id="fuSearch" placeholder="Search slip #, name, bookmaker, match..." oninput="filterFollowUps()">
+        </div>
+        <select class="form-select" id="fuStatusFilter" style="width:180px" onchange="filterFollowUps()">
+            <option value="all">All Settled</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+            <option value="cashed">Cashed Out</option>
+            <option value="void">Void</option>
+        </select>
+    </div>
+
+    <!-- ==================== FOLLOW UP CARDS ==================== -->
+    <div id="followUpContainer">
+        <div class="glass-card">
+            <div style="padding:60px;text-align:center;color:var(--text-muted);">
+                <i class="fas fa-spinner fa-spin" style="font-size:40px;display:block;margin-bottom:16px;"></i>
+                Loading settled bets...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/follow_up.js"></script>
+{% endblock %}
