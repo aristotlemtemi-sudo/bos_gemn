@@ -317,7 +317,9 @@ html[data-theme="light"] .modal{background:#ffffff}
     {% block content %}{% endblock %}
 </main>
 
-<button class="fab" onclick="openModal()" title="Add New Bet"><i class="fas fa-plus"></i></button>
+{% block fab %}
+<button class="fab" id="fabBtn" onclick="openModal()" title="Add New Bet"><i class="fas fa-plus"></i></button>
+{% endblock %}
 
 <!-- Add Bet Modal -->
 <div class="modal-overlay" id="addBetModal">

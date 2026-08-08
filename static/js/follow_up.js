@@ -245,25 +245,33 @@ function wireCard(card, slip) {
             mark.style.fontSize = (sizePx * 0.7) + 'px';
             mark.title = 'Click to remove X';
             mark.textContent = '✕';
-            mark.onclick = (e) => {
+            mark.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 drafts[slip.id].screenshot_annotations.splice(i, 1);
                 placeMarks();
                 markDirty(slip.id);
-            };
+            });
             marksLayer.appendChild(mark);
         });
     }
 
-    img.onclick = (e) => {
-        const rect = img.getBoundingClientRect();
-        if (rect.width === 0) return;
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
+    // Place marks on tap/click anywhere inside the annotate box. Uses the
+    // annotate container for hit-testing so it works even if the image has
+    // not finished loading (rect.width fallback), and on touch devices.
+    annotate.addEventListener('click', (e) => {
+        if (e.target !== img) return;
+        e.preventDefault();
+        const rect = annotate.getBoundingClientRect();
+        const width = rect.width || img.getBoundingClientRect().width;
+        const height = rect.height || img.getBoundingClientRect().height;
+        if (width === 0 || height === 0) return;
+        const x = ((e.clientX - rect.left) / width) * 100;
+        const y = ((e.clientY - rect.top) / height) * 100;
         drafts[slip.id].screenshot_annotations.push({ x: +x.toFixed(2), y: +y.toFixed(2), size: 4 });
         placeMarks();
         markDirty(slip.id);
-    };
+    });
 
     img.onload = placeMarks;
     if (img.complete && img.naturalWidth > 0) placeMarks();

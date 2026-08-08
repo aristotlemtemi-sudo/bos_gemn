@@ -1,6 +1,7 @@
 /* BOS GEMN Progressive Web App Service Worker */
 
-const CACHE_NAME = 'bos-gemn-cache-v1';
+const CACHE_NAME = 'bos-gemn-cache-v2';
+const STATIC_PREFIXES = ['/static/', '/sw.js', '/manifest.json', '/offline.html'];
 const ASSETS_TO_CACHE = [
     '/',
     '/offline.html',
@@ -37,6 +38,13 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
+    // NEVER cache API responses: follow-up marks, settings, reports, PDFs, etc.
+    // must always come fresh from the network or the user sees stale data.
+    if (requestURL.pathname.startsWith('/api/')) {
+        return;
+    }
+
+    // HTML / navigation: network-first, fall back to cached home page.
     if (requestURL.pathname === '/' || requestURL.pathname.endsWith('.html')) {
         event.respondWith(
             fetch(event.request).catch(() => caches.match('/'))
@@ -44,22 +52,31 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
+    // Static assets (CSS/JS/images): cache-first with runtime caching.
+    if (STATIC_PREFIXES.some(p => requestURL.pathname.startsWith(p))) {
+        event.respondWith(
+            caches.match(event.request).then(cachedResponse => {
+                return cachedResponse || fetch(event.request).then(networkResponse => {
+                    if (networkResponse && networkResponse.ok) {
+                        caches.open(CACHE_NAME).then(cache => {
+                            cache.put(event.request, networkResponse.clone());
+                        });
+                    }
+                    return networkResponse;
+                }).catch(() => {
+                    if (event.request.headers.get('accept')?.includes('image')) {
+                        return caches.match('/static/uploads/icon-192.png');
+                    }
+                    return caches.match('/offline.html');
+                });
+            })
+        );
+        return;
+    }
+
+    // Anything else (unhandled routes): network-first.
     event.respondWith(
-        caches.match(event.request).then(cachedResponse => {
-            return cachedResponse || fetch(event.request).then(networkResponse => {
-                if (event.request.url.startsWith(self.location.origin)) {
-                    caches.open(CACHE_NAME).then(cache => {
-                        cache.put(event.request, networkResponse.clone());
-                    });
-                }
-                return networkResponse;
-            }).catch(() => {
-                if (event.request.headers.get('accept')?.includes('image')) {
-                    return caches.match('/static/uploads/icon-192.png');
-                }
-                return caches.match('/offline.html');
-            });
-        })
+        fetch(event.request).catch(() => caches.match('/offline.html'))
     );
 });
 

@@ -4,6 +4,7 @@
 {% block page_subtitle %}Manage and track all your betting slips{% endblock %}
 
 {% block content %}
+{% block fab %}{% endblock %}
 <div class="section active" id="slips">
 
     <!-- TOP BAR -->
@@ -455,7 +456,7 @@ async function updateSlipStatus(id, status) {
         if (res.ok) {
             showToast(`Slip marked as ${status}`, 'success');
             loadSlips();
-            loadBankroll();
+            if (typeof loadBankroll === 'function') loadBankroll();
         } else {
             showToast('Failed to update status', 'error');
         }
@@ -473,7 +474,7 @@ async function deleteSlip(id) {
         if (res.ok) {
             showToast('Slip deleted', 'success');
             loadSlips();
-            loadBankroll();
+            if (typeof loadBankroll === 'function') loadBankroll();
         } else {
             showToast('Failed to delete', 'error');
         }
