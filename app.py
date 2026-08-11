@@ -64,7 +64,7 @@ def require_api_auth():
         if app.config.get('TESTING'):
             return
         if not session.get('user_id'):
-            return jsonify({'error': 'authentication required'}), 401
+            return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
 
 
 @app.context_processor
@@ -156,10 +156,10 @@ def register():
     password = data.get('password') or ''
 
     if not username or not email or not password:
-        return jsonify({'error': 'username, email and password are required'}), 400
+        return jsonify({'status': 'error', 'message': 'Username, email, and password are required'}), 400
 
     if User.query.filter((User.username == username) | (User.email == email)).first():
-        return jsonify({'error': 'username or email already exists'}), 400
+        return jsonify({'status': 'error', 'message': 'Username or email already exists'}), 400
 
     pw_hash = generate_password_hash(password)
     user = User(username=username, email=email, password_hash=pw_hash)
@@ -173,7 +173,7 @@ def register():
 
     session.permanent = True
     session['user_id'] = user.id
-    return jsonify({'message': 'registered', 'user': user.to_dict()}), 201
+    return jsonify({'status': 'success', 'data': {'message': 'Registered successfully', 'user': user.to_dict()}}), 201
 
 
 @app.route('/auth/login', methods=['POST'])
@@ -183,21 +183,21 @@ def login():
     password = data.get('password') or ''
 
     if not identifier or not password:
-        return jsonify({'error': 'identifier and password required'}), 400
+        return jsonify({'status': 'error', 'message': 'Identifier and password are required'}), 400
 
     user = User.query.filter((User.username == identifier) | (User.email == identifier)).first()
     if not user or not check_password_hash(user.password_hash, password):
-        return jsonify({'error': 'invalid credentials'}), 401
+        return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
 
     session.permanent = True
     session['user_id'] = user.id
-    return jsonify({'message': 'logged in', 'user': user.to_dict()})
+    return jsonify({'status': 'success', 'data': {'message': 'Logged in successfully', 'user': user.to_dict()}})
 
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
     session.pop('user_id', None)
-    return jsonify({'message': 'logged out'})
+    return jsonify({'status': 'success', 'data': {'message': 'Logged out successfully'}})
 
 
 @app.route('/api/me')
@@ -207,8 +207,8 @@ def me():
     if user_id:
         user = User.query.get(user_id)
     if not user:
-        return jsonify({'user': None})
-    return jsonify({'user': user.to_dict()})
+        return jsonify({'status': 'success', 'data': {'user': None}})
+    return jsonify({'status': 'success', 'data': {'user': user.to_dict()}})
 
 
 def get_session_user():
@@ -350,7 +350,7 @@ def settings():
 def get_notifications():
     user = get_session_user()
     notifs = NotificationLog.query.filter_by(user_id=user.id).order_by(NotificationLog.created_at.desc()).limit(20).all()
-    return jsonify([n.to_dict() for n in notifs])
+    return jsonify({'status': 'success', 'data': [n.to_dict() for n in notifs]})
 
 
 @app.route('/api/notifications/<int:id>/read', methods=['PUT'])
@@ -359,7 +359,7 @@ def mark_notification_read(id):
     notif = NotificationLog.query.filter_by(id=id, user_id=user.id).first_or_404()
     notif.is_read = True
     db.session.commit()
-    return jsonify(notif.to_dict())
+    return jsonify({'status': 'success', 'data': notif.to_dict()})
 
 
 @app.route('/api/dashboard/stats')
@@ -419,7 +419,7 @@ def dashboard_stats():
         elif available_pct < settings.bankroll_yellow_margin:
             margin_alert = 'yellow'
 
-    return jsonify({
+    stats_data = {
         'total_bankroll': round(total_balance, 2),
         'total_deposited': round(total_deposited, 2),
         'bookmaker_count': bookmaker_count,
@@ -442,7 +442,9 @@ def dashboard_stats():
         'yellow_margin': settings.bankroll_yellow_margin,
         'red_margin_pct': settings.bankroll_red_margin,
         'yellow_margin_pct': settings.bankroll_yellow_margin
-    })
+    }
+
+    return jsonify({'status': 'success', 'data': stats_data})
 
 
 @app.route('/api/dashboard/profit-chart')
@@ -478,13 +480,13 @@ def profit_chart():
         loss_data.append(round(cumulative, 2) if cumulative < 0 else 0)
         cumulative_list.append(round(cumulative, 2))
 
-    return jsonify({
+    return jsonify({'status': 'success', 'data': {
         'labels': labels,
         'daily_data': daily_data,
         'data': daily_data,
         'profit_data': profit_data,
         'loss_data': loss_data,
-        'cumulative': cumulative_list
+        'cumulative': cumulative_list,
     })
 
 
@@ -513,7 +515,7 @@ def get_slips():
         query = query.filter(search_filter)
 
     slips = query.order_by(BetSlip.created_at.desc()).all()
-    return jsonify([s.to_dict() for s in slips])
+    return jsonify({'status': 'success', 'data': [s.to_dict() for s in slips]})
 
 
 @app.route('/api/slips', methods=['POST'])
@@ -704,7 +706,7 @@ def create_slip():
 
     check_bankroll_alerts()
 
-    return jsonify(slip.to_dict()), 201
+    return jsonify({'status': 'success', 'data': slip.to_dict()}), 201
 
 
 @app.route('/api/slips/<int:id>', methods=['PUT'])
@@ -832,7 +834,7 @@ def update_slip(id):
 
     check_bankroll_alerts()
 
-    return jsonify(slip.to_dict())
+    return jsonify({'status': 'success', 'data': slip.to_dict()})
 
 
 @app.route('/api/slips/<int:id>', methods=['DELETE'])
@@ -864,7 +866,7 @@ def delete_slip(id):
     if bm_id:
         update_bookmaker_stats(bm_id)
 
-    return jsonify({'message': 'Slip deleted'})
+    return jsonify({'status': 'success', 'data': {'message': 'Slip deleted'}})
 
 
 # ============ FOLLOW UP ============
@@ -977,7 +979,7 @@ def get_followup():
             })
         data['lost_matches'] = normalized_lost
         result.append(data)
-    return jsonify(result)
+    return jsonify({'status': 'success', 'data': result})
 
 
 @app.route('/api/followup/<int:id>', methods=['PUT'])
@@ -994,13 +996,13 @@ def update_followup(id):
         slip.follow_up_notes = (data.get('follow_up_notes') or '').strip()
 
     db.session.commit()
-    return jsonify(slip.to_dict())
+    return jsonify({'status': 'success', 'data': slip.to_dict()})
 
 
 @app.route('/api/followup/pdf')
 def followup_pdf():
     if not REPORTLAB_AVAILABLE:
-        return jsonify({'error': 'ReportLab is not installed on the server. Unable to export PDF.'}), 500
+        return jsonify({'status': 'error', 'message': 'PDF generation library not installed on the server.'}), 500
 
     settings = get_or_create_settings()
     currency = settings.pdf_currency or 'TZS'
@@ -1014,7 +1016,7 @@ def followup_pdf():
     slips = [s for s in slips if is_followup_slip(s)]
 
     if not slips:
-        return jsonify({'error': 'No settled slips with screenshots or copied text to report.'}), 400
+        return jsonify({'status': 'error', 'message': 'No settled slips with attachments are available to report.'}), 400
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1195,7 +1197,7 @@ def analytics_by_sport():
             'roi': round(roi, 1),
             'profit': round(total_profit, 2),
             'bets': len(slips),
-            'wins': len([s for s in slips if s.status == 'won'])
+            'wins': len([s for s in slips if s.status == 'won']),
         })
     return jsonify(sorted(result, key=lambda x: x['roi'], reverse=True))
 
@@ -1214,7 +1216,7 @@ def analytics_by_market():
             'name': market or 'General',
             'roi': round(roi, 1),
             'profit': round(total_profit, 2),
-            'bets': len(slips)
+            'bets': len(slips),
         })
     return jsonify(sorted(result, key=lambda x: x['roi'], reverse=True))
 
@@ -1223,13 +1225,14 @@ def analytics_by_market():
 def analytics_by_bookmaker():
     user = get_session_user()
     bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
-    return jsonify([{
+    data = [{
         'name': bm.name,
         'roi': round(bm.roi, 1),
         'profit': round(bm.total_profit, 2),
         'bets': bm.total_bets,
-        'wins': bm.total_wins
-    } for bm in bookmakers])
+        'wins': bm.total_wins,
+    } for bm in bookmakers]
+    return jsonify({'status': 'success', 'data': data})
 
 
 @app.route('/api/analytics/by-odds-range')
@@ -1251,9 +1254,9 @@ def analytics_by_odds():
             'name': name,
             'roi': round(roi, 1),
             'profit': round(total_profit, 2),
-            'bets': len(slips)
+            'bets': len(slips),
         })
-    return jsonify(result)
+    return jsonify({'status': 'success', 'data': result})
 
 
 @app.route('/api/analytics/by-strategy')
@@ -1270,9 +1273,9 @@ def analytics_by_strategy():
             'name': strategy,
             'roi': round(roi, 1),
             'profit': round(total_profit, 2),
-            'bets': len(slips)
+            'bets': len(slips),
         })
-    return jsonify(sorted(result, key=lambda x: x['roi'], reverse=True))
+    return jsonify({'status': 'success', 'data': sorted(result, key=lambda x: x['roi'], reverse=True)})
 
 
 @app.route('/api/analytics/monthly')
@@ -1307,14 +1310,14 @@ def analytics_monthly():
         months.append(month_start.strftime('%b'))
         profits.append(round(profit, 2))
 
-    return jsonify({'labels': months, 'data': profits})
+    return jsonify({'status': 'success', 'data': {'labels': months, 'data': profits}})
 
 
 @app.route('/api/bookmakers', methods=['GET'])
 def get_bookmakers():
     user = get_session_user()
     bookmakers = Bookmaker.query.filter_by(user_id=user.id).all()
-    return jsonify([bm.to_dict() for bm in bookmakers])
+    return jsonify({'status': 'success', 'data': [bm.to_dict() for bm in bookmakers]})
 
 
 @app.route('/api/bookmakers', methods=['POST'])
@@ -1337,7 +1340,7 @@ def create_bookmaker():
     )
     db.session.add(bm)
     db.session.commit()
-    return jsonify(bm.to_dict()), 201
+    return jsonify({'status': 'success', 'data': bm.to_dict()}), 201
 
 
 @app.route('/api/bookmakers/<int:id>', methods=['PUT'])
@@ -1355,15 +1358,15 @@ def update_bookmaker(id):
             else:
                 setattr(bm, key, value)
     db.session.commit()
-    return jsonify(bm.to_dict())
+    return jsonify({'status': 'success', 'data': bm.to_dict()})
 
 
 @app.route('/api/bankroll/manual-summary', methods=['GET'])
 def manual_bankroll_summary():
     settings = get_or_create_settings()
-    return jsonify({
+    return jsonify({'status': 'success', 'data': {
         'manual_total_balance': round(settings.manual_total_balance, 2),
-        'manual_total_deposited': round(settings.manual_total_deposited, 2)
+        'manual_total_deposited': round(settings.manual_total_deposited, 2),
     })
 
 
@@ -1374,9 +1377,9 @@ def update_manual_bankroll_summary():
     settings.manual_total_balance = float(data.get('manual_total_balance', settings.manual_total_balance) or settings.manual_total_balance)
     settings.manual_total_deposited = float(data.get('manual_total_deposited', settings.manual_total_deposited) or settings.manual_total_deposited)
     db.session.commit()
-    return jsonify({
+    return jsonify({'status': 'success', 'data': {
         'manual_total_balance': round(settings.manual_total_balance, 2),
-        'manual_total_deposited': round(settings.manual_total_deposited, 2)
+        'manual_total_deposited': round(settings.manual_total_deposited, 2),
     })
 
 
@@ -1402,7 +1405,7 @@ def deposit_to_bookmaker(id):
     db.session.add(txn)
     db.session.commit()
 
-    return jsonify(bm.to_dict())
+    return jsonify({'status': 'success', 'data': bm.to_dict()})
 
 
 @app.route('/api/bookmakers/<int:id>/withdraw', methods=['POST'])
@@ -1413,7 +1416,7 @@ def withdraw_from_bookmaker(id):
     amount = float(data.get('amount', 0) or 0)
 
     if amount > bm.balance:
-        return jsonify({'error': 'Insufficient balance'}), 400
+        return jsonify({'status': 'error', 'message': 'Insufficient balance'}), 400
 
     bm.total_withdrawn += amount
     bm.balance -= amount
@@ -1430,7 +1433,7 @@ def withdraw_from_bookmaker(id):
     db.session.add(txn)
     db.session.commit()
 
-    return jsonify(bm.to_dict())
+    return jsonify({'status': 'success', 'data': bm.to_dict()})
 
 
 @app.route('/api/bankroll/stats')
@@ -1454,7 +1457,7 @@ def bankroll_stats():
         elif available_pct < settings.bankroll_yellow_margin:
             yellow_triggered = True
 
-    return jsonify({
+    return jsonify({'status': 'success', 'data': {
         'total_balance': round(total_balance, 2),
         'total_deposited': round(total_deposited, 2),
         'total_withdrawn': round(total_withdrawn, 2),
@@ -1465,7 +1468,7 @@ def bankroll_stats():
         'red_margin_triggered': red_triggered,
         'yellow_margin_triggered': yellow_triggered,
         'red_margin_pct': settings.bankroll_red_margin,
-        'yellow_margin_pct': settings.bankroll_yellow_margin
+        'yellow_margin_pct': settings.bankroll_yellow_margin,
     })
 
 
@@ -1497,10 +1500,10 @@ def bankroll_history():
         balance_data.append(round(max(0, current_deposited + pl), 2))
         deposited_data.append(round(current_deposited, 2))
 
-    return jsonify({
+    return jsonify({'status': 'success', 'data': {
         'labels': labels,
         'balance_data': balance_data,
-        'deposited_data': deposited_data
+        'deposited_data': deposited_data,
     })
 
 
@@ -1508,7 +1511,7 @@ def bankroll_history():
 def get_transactions():
     user = get_session_user()
     txns = BankrollTransaction.query.filter_by(user_id=user.id).order_by(BankrollTransaction.created_at.desc()).limit(50).all()
-    return jsonify([t.to_dict() for t in txns])
+    return jsonify({'status': 'success', 'data': [t.to_dict() for t in txns]})
 
 
 @app.route('/api/push/subscribe', methods=['POST'])
@@ -1519,7 +1522,7 @@ def push_subscribe():
     auth = data.get('auth')
 
     if not endpoint or not p256dh or not auth:
-        return jsonify({'error': 'Invalid subscription payload'}), 400
+        return jsonify({'status': 'error', 'message': 'Invalid subscription payload'}), 400
 
     user = get_session_user()
     sub = PushSubscription.query.filter_by(user_id=user.id, endpoint=endpoint).first()
@@ -1528,13 +1531,13 @@ def push_subscribe():
         db.session.add(sub)
         db.session.commit()
 
-    return jsonify(sub.to_dict()), 201
+    return jsonify({'status': 'success', 'data': sub.to_dict()}), 201
 
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
     settings = get_or_create_settings()
-    return jsonify(settings.to_dict())
+    return jsonify({'status': 'success', 'data': settings.to_dict()})
 
 
 @app.route('/api/settings', methods=['PUT'])
@@ -1545,23 +1548,23 @@ def update_settings():
         if hasattr(settings, key):
             setattr(settings, key, value)
     db.session.commit()
-    return jsonify(settings.to_dict())
+    return jsonify({'status': 'success', 'data': settings.to_dict()})
 
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     user = get_session_user()
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+        return jsonify({'status': 'error', 'message': 'No file provided'}), 400
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        return jsonify({'status': 'error', 'message': 'No file selected'}), 400
     if file and allowed_file(file.filename):
         filename = secure_filename(f"user_{user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        return jsonify({'path': f'/static/uploads/{filename}', 'filename': filename})
-    return jsonify({'error': 'Invalid file type'}), 400
+        return jsonify({'status': 'success', 'data': {'path': f'/static/uploads/{filename}', 'filename': filename}})
+    return jsonify({'status': 'error', 'message': 'Invalid file type'}), 400
 
 
 @app.route('/static/uploads/<path:filename>')
@@ -1582,7 +1585,7 @@ def offline_page():
 @app.route('/api/reports/pdf')
 def generate_pdf_report():
     if not REPORTLAB_AVAILABLE:
-        return jsonify({'error': 'ReportLab is not installed on the server. Unable to export PDF.'}), 500
+        return jsonify({'status': 'error', 'message': 'PDF generation library not installed on the server.'}), 500
 
     period = request.args.get('period', 'all')
     start_date = request.args.get('start_date')
@@ -1920,7 +1923,7 @@ def seed_data():
     for bm in Bookmaker.query.all():
         update_bookmaker_stats(bm.id)
 
-    return jsonify({'message': 'Seed data created successfully'})
+    return jsonify({'status': 'success', 'data': {'message': 'Seed data created successfully'}})
 
 
 def initialize_database():
