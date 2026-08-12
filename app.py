@@ -486,8 +486,8 @@ def profit_chart():
         'data': daily_data,
         'profit_data': profit_data,
         'loss_data': loss_data,
-        'cumulative': cumulative_list,
-    })
+        'cumulative': cumulative_list, 
+    }})
 
 
 @app.route('/api/slips', methods=['GET'])
@@ -1367,7 +1367,7 @@ def manual_bankroll_summary():
     return jsonify({'status': 'success', 'data': {
         'manual_total_balance': round(settings.manual_total_balance, 2),
         'manual_total_deposited': round(settings.manual_total_deposited, 2),
-    })
+    }})
 
 
 @app.route('/api/bankroll/manual-summary', methods=['PUT'])
@@ -1380,7 +1380,7 @@ def update_manual_bankroll_summary():
     return jsonify({'status': 'success', 'data': {
         'manual_total_balance': round(settings.manual_total_balance, 2),
         'manual_total_deposited': round(settings.manual_total_deposited, 2),
-    })
+    }})
 
 
 @app.route('/api/bookmakers/<int:id>/deposit', methods=['POST'])
@@ -1469,7 +1469,7 @@ def bankroll_stats():
         'yellow_margin_triggered': yellow_triggered,
         'red_margin_pct': settings.bankroll_red_margin,
         'yellow_margin_pct': settings.bankroll_yellow_margin,
-    })
+    }})
 
 
 @app.route('/api/bankroll/history')
@@ -1504,7 +1504,7 @@ def bankroll_history():
         'labels': labels,
         'balance_data': balance_data,
         'deposited_data': deposited_data,
-    })
+    }})
 
 
 @app.route('/api/bankroll/transactions')
