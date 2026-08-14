@@ -45,7 +45,13 @@ from models import db, User, BetSlip, Bookmaker, BankrollTransaction, BankrollHi
 
 app = Flask(__name__)
 app.config.from_object(Config)
-CORS(app)
+# For production, it's better to restrict origins.
+# Add your frontend's production URL to this list.
+origins = [
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+]
+CORS(app, supports_credentials=True, origins=origins)
 db.init_app(app)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
